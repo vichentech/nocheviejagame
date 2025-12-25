@@ -29,6 +29,9 @@ const GameMode = () => {
     const [musicTimer, setMusicTimer] = useState(15);
     const [isPaused, setIsPaused] = useState(false);
 
+    // Audio State
+    const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+
     // Refs
     const musicRef = useRef(null); // For victim music
     const sfxRef = useRef(null); // For challenge specific SFX
@@ -97,21 +100,34 @@ const GameMode = () => {
     };
 
     const stopAllAudio = () => {
+        setIsPlayingAudio(false);
         if (musicRef.current) { musicRef.current.pause(); musicRef.current = null; }
         if (sfxRef.current) { sfxRef.current.pause(); sfxRef.current = null; }
         window.speechSynthesis.cancel();
     };
 
+    // Helper to stop only instruction reading/music manually via button
+    const handleStopAudio = () => {
+        stopAllAudio();
+    };
+
     const speak = (text, voiceName, callback) => {
         if ('speechSynthesis' in window) {
             window.speechSynthesis.cancel();
+            setIsPlayingAudio(true);
             const utterance = new SpeechSynthesisUtterance(text);
             if (voiceName && voiceName !== 'default') {
                 const voices = window.speechSynthesis.getVoices();
                 const selected = voices.find(v => v.name === voiceName);
                 if (selected) utterance.voice = selected;
             }
-            if (callback) utterance.onend = callback;
+            utterance.onend = () => {
+                if (callback) callback();
+                else setIsPlayingAudio(false);
+            };
+            // Fallback safety to unset playing state? 
+            // Better handled by the last callback in the chain.
+
             window.speechSynthesis.speak(utterance);
         } else if (callback) {
             callback();
@@ -178,10 +194,11 @@ const GameMode = () => {
         // Play Music
         setStatus('VICTIM_MUSIC');
         setMusicTimer(15);
+        setIsPlayingAudio(true);
 
         if (data.music && data.music.filename) {
             musicRef.current = new Audio(`/uploads/${data.music.filename}`);
-            musicRef.current.play().catch(e => console.log("Audio play error", e));
+            musicRef.current.play().then(() => { }).catch(e => console.log("Audio play error", e));
         }
 
         // Countdown 15s for music
@@ -201,7 +218,11 @@ const GameMode = () => {
     // 3. Announce Challenge (TTS)
     const announceChallenge = (data) => {
         setStatus('ANNOUNCING');
-        if (musicRef.current) musicRef.current.pause();
+        // Stop music properly
+        if (musicRef.current) {
+            musicRef.current.pause();
+            musicRef.current = null;
+        }
 
         const challenge = data.challenge;
         const victim = data.victim;
@@ -218,13 +239,21 @@ const GameMode = () => {
         ];
 
         let index = 0;
+
+        // Mark as playing before loop
+        setIsPlayingAudio(true);
+
         const speakNext = () => {
             if (index < texts.length) {
                 const text = texts[index];
                 index++;
+                // If stopped manually (isPlayingAudio false), break loop
+                if (!window.speechSynthesis.speaking && !isPlayingAudio) return;
+
                 if (text) speak(text, challenge.voiceConfig, () => setTimeout(speakNext, 500));
                 else speakNext();
             } else {
+                setIsPlayingAudio(false);
                 setStatus('READY_TO_PLAY');
             }
         };
@@ -232,13 +261,17 @@ const GameMode = () => {
     };
 
     const repeatInstructions = () => {
-        if (currentData) announceChallenge(currentData);
+        if (currentData && !isPlayingAudio) {
+            announceChallenge(currentData);
+        }
     };
     const pauseInstructions = () => window.speechSynthesis.pause();
     const resumeInstructions = () => window.speechSynthesis.resume();
 
     // 4. Play
     const playChallenge = () => {
+        stopAllAudio(); // Requirement: Stop audio on play
+
         const challenge = currentData.challenge;
 
         if (challenge.soundId && challenge.soundId.filename) {
@@ -266,6 +299,7 @@ const GameMode = () => {
     };
 
     const skipChallenge = () => {
+        stopAllAudio(); // Requirement: Stop audio on skip
         startNextGameCycle();
     };
 
@@ -298,9 +332,12 @@ const GameMode = () => {
                 <div style={{ position: 'absolute', top: '10px', left: '10px', display: 'flex', gap: '5px' }}>
                     {(status === 'ANNOUNCING' || status === 'READY_TO_PLAY') && (
                         <>
-                            <button className="btn-secondary" onClick={repeatInstructions} title="Repetir"><FaRedo /></button>
+                            <button className="btn-secondary" onClick={repeatInstructions} title="Repetir" disabled={isPlayingAudio} style={{ opacity: isPlayingAudio ? 0.5 : 1 }}>
+                                <FaRedo />
+                            </button>
                             <button className="btn-secondary" onClick={pauseInstructions} title="Pausar"><FaPause /></button>
                             <button className="btn-secondary" onClick={resumeInstructions} title="Continuar"><FaPlay /></button>
+                            <button className="btn-danger" onClick={handleStopAudio} title="Parar Audio"><FaStop /></button>
                         </>
                     )}
                 </div>

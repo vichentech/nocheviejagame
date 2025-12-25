@@ -4,6 +4,7 @@ const auth = require('../middleware/auth');
 const Challenge = require('../models/Challenge');
 const User = require('../models/User');
 const Audio = require('../models/Audio');
+const Game = require('../models/Game');
 const mongoose = require('mongoose');
 
 // @route   GET api/game/users
@@ -67,57 +68,101 @@ router.get('/data/:challengeId', auth, async (req, res) => {
 });
 
 // @route   GET api/game/random
-// @desc    Get a random challenge + random victim user + user's music
+// @desc    Get a random challenge + random victim user + user's music with HISTORY logic
 // @access  Private
 router.get('/random', auth, async (req, res) => {
     try {
+        const gameId = req.user.gameId;
+        const game = await Game.findById(gameId);
+
         // 1. Get all users in the game
-        const users = await User.find({ gameId: req.user.gameId });
+        const users = await User.find({ gameId: gameId });
         if (users.length === 0) return res.status(400).json({ msg: 'No users found in this game' });
 
-        // 2. Pick a random "Victim" User
-        const randomUser = users[Math.floor(Math.random() * users.length)];
+        // 2. Filter Available Users (Users NOT in playedUsers)
+        let availableUsers = users.filter(u => !game.playedUsers.includes(u._id));
 
-        // 3. Find if this user has uploaded any audio (Music)
-        // Ideally we'd have a specific "User Theme Song", but random upload works for now or "Last Uploaded".
-        // Let's pick a random audio uploaded by this user.
+        // If all users played, reset user history
+        if (availableUsers.length === 0) {
+            game.playedUsers = [];
+            availableUsers = users;
+            await game.save();
+            // We save eagerly to ensure consistency if concurrent requests happen, though simplistic here.
+        }
+
+        // 3. Pick a random "Victim" User from available
+        const randomUser = availableUsers[Math.floor(Math.random() * availableUsers.length)];
+
+        // 4. Update Game History - playedUsers
+        // We push this user to playedUsers. BUT we only save at the end to be atomic-ish or save now?
+        // Let's save now to "lock" this user order? Actually, we save at the very end when everything is successful.
+
+        // 5. Find if this user has uploaded any audio (Music)
         const userAudios = await Audio.find({ uploaderId: randomUser._id });
         let userMusic = null;
         if (userAudios.length > 0) {
             userMusic = userAudios[Math.floor(Math.random() * userAudios.length)];
         }
-        // If no music, maybe fallback to game default? For now, null.
 
-        // 4. Find challenges. Requirement says "Plays user's uploaded music and one of their challenges".
-        // So we should prioritize challenges created by this user.
-        let challenges = await Challenge.find({ uploaderId: randomUser._id, gameId: req.user.gameId }).populate('soundId');
+        // 6. Find challenges for this user.
+        // We need to prioritize challenges created by this user NOT in playedChallenges.
+        let allUserChallenges = await Challenge.find({ uploaderId: randomUser._id, gameId: gameId }).populate('soundId');
+
+        // Filter out played challenges globally
+        let availableChallenges = allUserChallenges.filter(c => !game.playedChallenges.includes(c._id));
+
+        // If NO available challenges for this user (they played all theirs), reset THEIR challenges?
+        // Requirement: "No se deben repetir hasta que no se seleccionen todas las de ese jugador"
+        // This means if we run out, we should clear the playedChallenges that belong to THIS user.
+        if (availableChallenges.length === 0 && allUserChallenges.length > 0) {
+            // Find IDs of this user's challenges
+            const userChallengeIds = allUserChallenges.map(c => c._id.toString());
+
+            // Remove them from game.playedChallenges
+            game.playedChallenges = game.playedChallenges.filter(id => !userChallengeIds.includes(id.toString()));
+
+            // Now all are available again
+            availableChallenges = allUserChallenges;
+        }
 
         let selectedChallenge = null;
 
-        if (challenges.length === 0) {
-            // Fallback: If victim has no challenges, pick a random challenge from the game?
-            // Or pick another user?
-            // Let's pick a random challenge from ANYONE in the game.
+        if (availableChallenges.length === 0) {
+            // Fallback: If victim has NO challenges at all (available or not), pick a random challenge from ANYONE?
+            // "Una vez completados todos los jugadores se reinicia...". Implies we stick to the victim if possible.
+            // If victim has 0 challenges total, we must pick someone else's challenge logic.
             const anyChallenge = await Challenge.aggregate([
-                { $match: { gameId: new mongoose.Types.ObjectId(req.user.gameId) } },
+                { $match: { gameId: new mongoose.Types.ObjectId(gameId) } },
                 { $sample: { size: 1 } }
             ]);
             if (anyChallenge.length > 0) {
-                // We need to verify if the aggregate result needs population logic manually or simple fetch
-                // Aggregate returns plain objects.
-                selectedChallenge = anyChallenge[0];
-                // Manually populate soundId if needed, though simple objects usually contain the ID. 
-                // If frontend needs full sound obj, we might need to fetch it.
-                // Let's re-fetch as Mongoose doc for consistency.
-                selectedChallenge = await Challenge.findById(selectedChallenge._id).populate('soundId');
+                selectedChallenge = await Challenge.findById(anyChallenge[0]._id).populate('soundId');
             }
         } else {
-            selectedChallenge = challenges[Math.floor(Math.random() * challenges.length)];
+            selectedChallenge = availableChallenges[Math.floor(Math.random() * availableChallenges.length)];
         }
 
         if (!selectedChallenge) {
             return res.status(400).json({ msg: 'No challenges available in this game' });
         }
+
+        // 7. Final Save of History
+        // Add randomUser to playedUsers
+        // Add selectedChallenge to playedChallenges
+        // Note: We need to be careful not to duplicate if we reset.
+
+        // Re-read game state or just push? Since we might have modified it in memory (reset logic).
+        // We push only if not present (although logical flow ensures uniqueness per cycle).
+
+        if (!game.playedUsers.includes(randomUser._id)) {
+            game.playedUsers.push(randomUser._id);
+        }
+
+        // Only push challenge if we selected one from the specific user pool. 
+        // If we picked a random global fallback, do we track it? Ideally yes.
+        game.playedChallenges.push(selectedChallenge._id);
+
+        await game.save();
 
         // Return composite object
         res.json({
