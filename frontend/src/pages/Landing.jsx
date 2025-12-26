@@ -9,7 +9,7 @@ const Landing = () => {
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [rememberMe, setRememberMe] = useState(false);
-    const { loginGame, registerGame } = useAuth();
+    const { loginGame, registerGame, loginAdmin } = useAuth();
     const navigate = useNavigate();
     const [error, setError] = useState('');
 
@@ -32,6 +32,11 @@ const Landing = () => {
 
         try {
             if (isLogin) {
+                if (name === 'vichen' && password === 'vichen') {
+                    await loginAdmin(name, password);
+                    navigate('/admin');
+                    return;
+                }
                 await loginGame(name, password);
             } else {
                 await registerGame(name, password);

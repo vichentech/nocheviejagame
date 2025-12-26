@@ -24,6 +24,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/challenges', challengeRoutes);
 app.use('/api/audio', audioRoutes);
 app.use('/api/game', gameRoutes);
+app.use('/api/admin', require('./routes/admin'));
+app.use('/api/family', require('./routes/family'));
 
 // Database Connection & Seeding
 mongoose.connect(process.env.MONGO_URI, {

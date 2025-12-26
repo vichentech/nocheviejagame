@@ -21,6 +21,15 @@ const GameRoute = ({ children }) => {
   return children;
 };
 
+import AdminDashboard from './pages/AdminDashboard';
+
+const AdminRoute = ({ children }) => {
+  const { user, loading } = useAuth();
+  if (loading) return <div>Loading...</div>;
+  if (!user || user.role !== 'admin') return <Navigate to="/" />;
+  return children;
+};
+
 function AppRoutes() {
   return (
     <Routes>
@@ -29,6 +38,8 @@ function AppRoutes() {
       <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/game" element={<ProtectedRoute><GameMode /></ProtectedRoute>} />
       <Route path="/manual" element={<ProtectedRoute><ManualMode /></ProtectedRoute>} />
+      <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }

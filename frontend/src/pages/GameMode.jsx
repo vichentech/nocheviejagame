@@ -27,15 +27,17 @@ const GameMode = () => {
     const [countdown, setCountdown] = useState(0);
     const [timerId, setTimerId] = useState(null);
     const [musicTimer, setMusicTimer] = useState(15);
-    const [isPaused, setIsPaused] = useState(false);
 
     // Audio State
     const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+    // Track if paused? Not strictly needed if we just use playing state, but for UI play/pause buttons implies TTS pause.
+    // window.speechSynthesis.paused is available.
 
     // Refs
     const musicRef = useRef(null); // For victim music
     const sfxRef = useRef(null); // For challenge specific SFX
     const wakeLockRef = useRef(null);
+    const announceTimeoutRef = useRef(null); // New ref to handle the 1s delay timeout
 
     useEffect(() => {
         // Wake Lock
@@ -48,7 +50,6 @@ const GameMode = () => {
         };
         requestWakeLock();
 
-        // Fetch users for manual mode just in case
         fetchManualUsers();
 
         return () => {
@@ -74,13 +75,9 @@ const GameMode = () => {
 
     const saveConfig = (min, max) => {
         let cleanMin = parseInt(min);
-        // Requirement: Min time never < 60s
-        if (cleanMin < 0) cleanMin = 0; // Temporary input allow
-
+        if (cleanMin < 0) cleanMin = 0;
         setMinTime(cleanMin);
-
         let cleanMax = parseInt(max);
-
         setMaxTime(cleanMax);
     };
 
@@ -104,29 +101,36 @@ const GameMode = () => {
         if (musicRef.current) { musicRef.current.pause(); musicRef.current = null; }
         if (sfxRef.current) { sfxRef.current.pause(); sfxRef.current = null; }
         window.speechSynthesis.cancel();
+        if (announceTimeoutRef.current) {
+            clearTimeout(announceTimeoutRef.current);
+            announceTimeoutRef.current = null;
+        }
     };
 
-    // Helper to stop only instruction reading/music manually via button
     const handleStopAudio = () => {
         stopAllAudio();
     };
 
     const speak = (text, voiceName, callback) => {
         if ('speechSynthesis' in window) {
-            window.speechSynthesis.cancel();
-            setIsPlayingAudio(true);
+            window.speechSynthesis.cancel(); // Always cancel previous
+
             const utterance = new SpeechSynthesisUtterance(text);
             if (voiceName && voiceName !== 'default') {
                 const voices = window.speechSynthesis.getVoices();
                 const selected = voices.find(v => v.name === voiceName);
                 if (selected) utterance.voice = selected;
             }
+
             utterance.onend = () => {
                 if (callback) callback();
-                else setIsPlayingAudio(false);
             };
-            // Fallback safety to unset playing state? 
-            // Better handled by the last callback in the chain.
+
+            utterance.onerror = (e) => {
+                console.error("TTS Error", e);
+                // Continue anyway
+                if (callback) callback();
+            };
 
             window.speechSynthesis.speak(utterance);
         } else if (callback) {
@@ -179,7 +183,6 @@ const GameMode = () => {
     const confirmManualSelection = async () => {
         if (!selectedManualChallengeId) return;
         try {
-            // We need to fetch the full data structure (challenge + music + user) based on selection
             const res = await axios.get(`/api/game/data/${selectedManualChallengeId}`);
             startChallengeFlow(res.data);
         } catch (err) {
@@ -198,7 +201,7 @@ const GameMode = () => {
 
         if (data.music && data.music.filename) {
             musicRef.current = new Audio(`/uploads/${data.music.filename}`);
-            musicRef.current.play().then(() => { }).catch(e => console.log("Audio play error", e));
+            musicRef.current.play().catch(e => console.log("Audio play error", e));
         }
 
         // Countdown 15s for music
@@ -206,6 +209,7 @@ const GameMode = () => {
             setMusicTimer(prev => {
                 if (prev <= 1) {
                     clearInterval(musId);
+                    // Timer finished, proceed to announce
                     announceChallenge(data);
                     return 0;
                 }
@@ -218,59 +222,111 @@ const GameMode = () => {
     // 3. Announce Challenge (TTS)
     const announceChallenge = (data) => {
         setStatus('ANNOUNCING');
+
         // Stop music properly
         if (musicRef.current) {
             musicRef.current.pause();
             musicRef.current = null;
         }
 
-        const challenge = data.challenge;
-        const victim = data.victim;
-
-        const texts = [
-            `Atención. Jugador que Propone: ${victim.username}.`, // Changed from 'Victima'
-            `Prueba: ${challenge.title}.`,
-            `Descripción: ${challenge.text}.`,
-            `Reglas: ${challenge.rules || 'Ninguna'}.`,
-            `Participantes: ${challenge.participants}.`,
-            `Tiempo límite: ${challenge.timeLimit === 0 ? "Indefinido" : challenge.timeLimit + " segundos"}.`,
-            challenge.objects ? `Objetos: ${challenge.objects}.` : '',
-            "Pulsa Jugar cuando estéis listos."
-        ];
-
-        let index = 0;
-
-        // Mark as playing before loop
+        // Set playing true immediately to disable Replay button during pause
         setIsPlayingAudio(true);
 
-        const speakNext = () => {
-            if (index < texts.length) {
-                const text = texts[index];
-                index++;
-                // If stopped manually (isPlayingAudio false), break loop
-                if (!window.speechSynthesis.speaking && !isPlayingAudio) return;
+        // Pause before speaking (1 second)
+        announceTimeoutRef.current = setTimeout(() => {
+            const challenge = data.challenge;
+            const victim = data.victim;
 
-                if (text) speak(text, challenge.voiceConfig, () => setTimeout(speakNext, 500));
-                else speakNext();
-            } else {
-                setIsPlayingAudio(false);
-                setStatus('READY_TO_PLAY');
-            }
-        };
-        speakNext();
+            const texts = [
+                `Atención. Jugador que Propone: ${victim.username}.`,
+                `Prueba: ${challenge.title}.`,
+                `Descripción: ${challenge.text}.`,
+                `Reglas: ${challenge.rules || 'Ninguna'}.`,
+                `Participantes: ${challenge.participants}.`,
+                `Tiempo límite: ${challenge.timeLimit === 0 ? "Indefinido" : challenge.timeLimit + " segundos"}.`,
+                challenge.objects ? `Objetos: ${challenge.objects}.` : '',
+                "Pulsa Jugar cuando estéis listos."
+            ];
+
+            let index = 0;
+
+            const speakNext = () => {
+                // IMPORTANT: Check isPlayingAudio via state setter callback logic or ref? 
+                // Since this closure captures initial state, we need to trust that if we called stopAllAudio, 
+                // the speech synthesis was cancelled. 
+                // But we need to know if we should CONTINUE the loop.
+                // We can't easily access the fresh 'isPlayingAudio' state inside this closure.
+                // However, 'window.speechSynthesis.speaking' helps, but stopping is the key.
+                // If we stopped, 'stopAllAudio' cancelled window.speechSynthesis.
+                // So the 'onend' of the previous utterance would fire? Yes.
+                // But if we explicitly cancelled, we don't want to continue.
+
+                // Let's use a mutable ref for the loop control or just check cancellation.
+                // Better: if status changed from ANNOUNCING, stop.
+                // But status stays ANNOUNCING.
+
+                // We will rely on checking 'window.speechSynthesis' actually speaking? No.
+                // Let's check a ref wrapper around isPlayingAudio if we really need to break.
+                // For now, simpler: we check if the component is still mounted and playing intended.
+
+                if (index < texts.length) {
+                    const text = texts[index];
+                    index++;
+
+                    // Proceed
+                    speak(text, challenge.voiceConfig, () => {
+                        // Determine if we should continue
+                        // We use a small timeout for natural pause between sentences
+                        announceTimeoutRef.current = setTimeout(() => {
+                            // Check if audio was stopped by user (we can check if playing state is still true in a Ref? Or just check if valid)
+                            // A simple hack: check if 'status' is still 'ANNOUNCING'. If user clicked 'Stop', status is ANNOUNCING but audio stopped? 
+                            // No, handleStopAudio calls stopAllAudio which sets isPlayingAudio false. 
+                            // We need access to that fresh state.
+                            // We can use the setState functional update to check? No.
+
+                            // Let's just trust that if we cancelled, the loop effectively breaks because we control the chain.
+                            // But onend fires even on cancel? 
+                            // Verify: cancel() fires the error-event or end-event? usually end-event behaves weirdly on cancel.
+                            // We'll proceed. The key is if 'stopAllAudio' was called, we want to ABORT.
+                            // For this we can use a ref 'shouldPlayRef'.
+                            if (shouldPlayRef.current) {
+                                speakNext();
+                            }
+                        }, 500);
+                    });
+                } else {
+                    setIsPlayingAudio(false);
+                    setStatus('READY_TO_PLAY');
+                }
+            };
+
+            // Start loop
+            shouldPlayRef.current = true;
+            speakNext();
+
+        }, 1000); // 1s pause
+    };
+
+    const shouldPlayRef = useRef(false);
+
+    // Override stopAllAudio to update ref
+    const superStopAllAudio = () => {
+        shouldPlayRef.current = false;
+        stopAllAudio();
     };
 
     const repeatInstructions = () => {
-        if (currentData && !isPlayingAudio) {
+        if (currentData) {
             announceChallenge(currentData);
         }
     };
+
     const pauseInstructions = () => window.speechSynthesis.pause();
     const resumeInstructions = () => window.speechSynthesis.resume();
 
     // 4. Play
     const playChallenge = () => {
-        stopAllAudio(); // Requirement: Stop audio on play
+        superStopAllAudio(); // Stop audio on play
 
         const challenge = currentData.challenge;
 
@@ -299,7 +355,7 @@ const GameMode = () => {
     };
 
     const skipChallenge = () => {
-        stopAllAudio(); // Requirement: Stop audio on skip
+        superStopAllAudio(); // Stop audio on skip
         startNextGameCycle();
     };
 
@@ -311,13 +367,12 @@ const GameMode = () => {
     };
 
     const stopAndReset = () => {
-        stopAllAudio();
+        superStopAllAudio();
         if (timerId) clearInterval(timerId);
         setStatus('IDLE');
         setCurrentData(null);
     };
 
-    // Helper for manual user click
     const handleManualUserClick = (u) => {
         setSelectedManualUser(u);
         fetchManualChallenges(u._id);
@@ -337,7 +392,7 @@ const GameMode = () => {
                             </button>
                             <button className="btn-secondary" onClick={pauseInstructions} title="Pausar"><FaPause /></button>
                             <button className="btn-secondary" onClick={resumeInstructions} title="Continuar"><FaPlay /></button>
-                            <button className="btn-danger" onClick={handleStopAudio} title="Parar Audio"><FaStop /></button>
+                            <button className="btn-danger" onClick={superStopAllAudio} title="Parar Audio"><FaStop /></button>
                         </>
                     )}
                 </div>
@@ -352,7 +407,6 @@ const GameMode = () => {
                     <div className="animate-fade-in">
                         <h1 style={{ marginBottom: '30px' }}>Configuración del Juego</h1>
 
-                        {/* Mode Switch */}
                         <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'center', gap: '10px' }}>
                             <button className={`btn-secondary ${!isManualMode ? 'active' : ''}`} onClick={() => setIsManualMode(false)} style={{ background: !isManualMode ? 'var(--secondary)' : 'transparent', color: !isManualMode ? 'white' : 'white' }}>AUTOMÁTICO</button>
                             <button className={`btn-secondary ${isManualMode ? 'active' : ''}`} onClick={() => setIsManualMode(true)} style={{ background: isManualMode ? 'var(--secondary)' : 'transparent', color: isManualMode ? 'white' : 'white' }}>MANUAL</button>
@@ -385,13 +439,10 @@ const GameMode = () => {
                     </div>
                 )}
 
-                {/* MANUAL SELECTION STATE */}
                 {status === 'MANUAL_SELECTION' && (
                     <div className="animate-fade-in" style={{ textAlign: 'left', maxHeight: '70vh', overflowY: 'auto' }}>
                         <h2 style={{ textAlign: 'center', marginBottom: '20px' }}>Selección Manual</h2>
-
                         <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', justifyContent: 'center' }}>
-                            {/* User List */}
                             <div style={{ flex: 1, minWidth: '300px' }}>
                                 <h4 style={{ borderBottom: '1px solid gray' }}>Usuarios</h4>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
@@ -407,8 +458,6 @@ const GameMode = () => {
                                     ))}
                                 </div>
                             </div>
-
-                            {/* Challenge List */}
                             {selectedManualUser && (
                                 <div style={{ flex: 1, minWidth: '300px' }}>
                                     <h4 style={{ borderBottom: '1px solid gray' }}>Pruebas de {selectedManualUser.username}</h4>
@@ -428,7 +477,6 @@ const GameMode = () => {
                                 </div>
                             )}
                         </div>
-
                         {selectedManualChallengeId && (
                             <div style={{ marginTop: '20px', textAlign: 'center' }}>
                                 <button className="btn-primary" style={{ fontSize: '1.5rem', padding: '10px 40px' }} onClick={confirmManualSelection}>
@@ -439,7 +487,6 @@ const GameMode = () => {
                     </div>
                 )}
 
-                {/* VICTIM MUSIC STATE */}
                 {status === 'VICTIM_MUSIC' && (
                     <div className="animate-fade-in">
                         <FaMusic style={{ fontSize: '5rem', color: '#ec4899', marginBottom: '20px' }} className="animate-bounce" />
@@ -449,7 +496,6 @@ const GameMode = () => {
                     </div>
                 )}
 
-                {/* ANNOUNCING & READY STATE */}
                 {(status === 'ANNOUNCING' || status === 'READY_TO_PLAY') && (
                     <div className="animate-fade-in">
                         <h5 style={{ color: 'var(--text-muted)' }}>Jugador que Propone:</h5>
@@ -478,7 +524,6 @@ const GameMode = () => {
                     </div>
                 )}
 
-                {/* PLAYING STATE */}
                 {status === 'PLAYING_CHALLENGE' && (
                     <div>
                         <h2 style={{ color: '#ec4899' }}>¡EN CURSO!</h2>
@@ -492,7 +537,6 @@ const GameMode = () => {
                     </div>
                 )}
 
-                {/* FINISHED STATE */}
                 {status === 'FINISHED' && (
                     <div className="animate-fade-in">
                         <h1 style={{ fontSize: '4rem', color: '#ec4899', marginBottom: '40px' }}>¡Tiempo Terminado!</h1>
@@ -501,7 +545,6 @@ const GameMode = () => {
                         </button>
                     </div>
                 )}
-
             </div>
         </div>
     );

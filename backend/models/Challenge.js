@@ -3,7 +3,11 @@ const mongoose = require('mongoose');
 const challengeSchema = new mongoose.Schema({
     title: { type: String, required: true },
     text: { type: String, required: true },
-    voiceConfig: { type: String, default: 'default' }, // ID or name of the voice
+    voiceConfig: {
+        name: { type: String, default: 'default' },
+        rate: { type: Number, default: 1.0 },
+        pitch: { type: Number, default: 1.0 }
+    },
     participants: { type: Number, default: 1 },
     timeLimit: { type: Number, default: 60 }, // in seconds
     objects: { type: String },

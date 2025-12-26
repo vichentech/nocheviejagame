@@ -4,7 +4,7 @@ const userSchema = new mongoose.Schema({
     username: { type: String, required: true },
     passwordHash: { type: String, required: true },
     gameId: { type: mongoose.Schema.Types.ObjectId, ref: 'Game' }, // Null for superadmin
-    role: { type: String, enum: ['admin', 'user'], default: 'user' },
+    role: { type: String, enum: ['admin', 'user', 'family_admin'], default: 'user' },
     createdAt: { type: Date, default: Date.now }
 });
 

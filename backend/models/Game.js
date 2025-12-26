@@ -5,7 +5,8 @@ const gameSchema = new mongoose.Schema({
     passwordHash: { type: String, required: true },
     createdAt: { type: Date, default: Date.now },
     playedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
-    playedChallenges: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Challenge' }]
+    playedChallenges: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Challenge' }],
+    adminUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' } // The Family Admin
 });
 
 module.exports = mongoose.model('Game', gameSchema);

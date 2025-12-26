@@ -56,11 +56,20 @@ router.post('/user/register', async (req, res) => {
         let user = await User.findOne({ username, gameId });
         if (user) return res.status(400).json({ msg: 'User already exists in this game' });
 
+        // Check if this is the FIRST user in the game
+        const userCount = await User.countDocuments({ gameId });
+        const role = userCount === 0 ? 'family_admin' : 'user';
+
         const salt = await bcrypt.genSalt(10);
         const passwordHash = await bcrypt.hash(password, salt);
 
-        user = new User({ username, passwordHash, gameId });
+        user = new User({ username, passwordHash, gameId, role });
         await user.save();
+
+        // If family admin, update the game
+        if (role === 'family_admin') {
+            await Game.findByIdAndUpdate(gameId, { adminUserId: user._id });
+        }
 
         const payload = { user: { id: user.id, username: user.username, role: user.role, gameId: user.gameId } };
         jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '365d' }, (err, token) => {

@@ -43,6 +43,15 @@ export const AuthProvider = ({ children }) => {
         return res.data;
     };
 
+    const loginAdmin = async (username, password) => {
+        const res = await axios.post('/api/auth/admin/login', { username, password });
+        sessionStorage.setItem('token', res.data.token);
+        setToken(res.data.token);
+        // Admin user object construction 
+        setUser({ id: 'admin', role: 'admin', username: 'vichen' });
+        axios.defaults.headers.common['x-auth-token'] = res.data.token;
+    };
+
     const loginUser = async (username, password) => {
         if (!game) throw new Error("No game selected");
         const res = await axios.post('/api/auth/user/login', { username, password, gameId: game.id });
@@ -73,7 +82,7 @@ export const AuthProvider = ({ children }) => {
     };
 
     return (
-        <AuthContext.Provider value={{ user, game, loginGame, registerGame, loginUser, registerUser, logout, loading }}>
+        <AuthContext.Provider value={{ user, game, loginGame, registerGame, loginUser, registerUser, loginAdmin, logout, loading }}>
             {children}
         </AuthContext.Provider>
     );
