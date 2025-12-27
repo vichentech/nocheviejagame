@@ -12,6 +12,14 @@ const GameMode = () => {
     const [minTime, setMinTime] = useState(localStorage.getItem('minTime') || 60);
     const [maxTime, setMaxTime] = useState(localStorage.getItem('maxTime') || 300);
     const [isManualMode, setIsManualMode] = useState(false);
+    const isFamilyAdmin = user?.role === 'family_admin';
+
+    // Ensure non-admins are always in Auto mode
+    useEffect(() => {
+        if (!isFamilyAdmin && isManualMode) {
+            setIsManualMode(false);
+        }
+    }, [isFamilyAdmin, isManualMode]);
 
     // Flow State: 'IDLE', 'COUNTDOWN', 'MANUAL_SELECTION', 'VICTIM_MUSIC', 'ANNOUNCING', 'READY_TO_PLAY', 'PLAYING_CHALLENGE', 'FINISHED'
     const [status, setStatus] = useState('IDLE');
@@ -196,7 +204,9 @@ const GameMode = () => {
 
         // Play Music
         setStatus('VICTIM_MUSIC');
-        setMusicTimer(15);
+        // Max 30s for hymn, or use defined duration
+        const duration = Math.min((data.music && data.music.duration) ? data.music.duration : 30, 30);
+        setMusicTimer(duration);
         setIsPlayingAudio(true);
 
         if (data.music && data.music.filename) {
@@ -221,6 +231,7 @@ const GameMode = () => {
 
     // 3. Announce Challenge (TTS)
     const announceChallenge = (data) => {
+        if (timerId) clearInterval(timerId); // Stop the music timer if active
         setStatus('ANNOUNCING');
 
         // Stop music properly
@@ -238,15 +249,22 @@ const GameMode = () => {
             const victim = data.victim;
 
             const texts = [
-                `Atención. Jugador que Propone: ${victim.username}.`,
-                `Prueba: ${challenge.title}.`,
+                `Atención. Reto para todos, propuesto por ${victim.username}.`,
+                `Título de la prueba: ${challenge.title}.`,
                 `Descripción: ${challenge.text}.`,
-                `Reglas: ${challenge.rules || 'Ninguna'}.`,
-                `Participantes: ${challenge.participants}.`,
-                `Tiempo límite: ${challenge.timeLimit === 0 ? "Indefinido" : challenge.timeLimit + " segundos"}.`,
-                challenge.objects ? `Objetos: ${challenge.objects}.` : '',
-                "Pulsa Jugar cuando estéis listos."
-            ];
+                challenge.playerConfig.targetType === 'forward' ? `Jugador objetivo: el que está ${challenge.playerConfig.positionOffset || 1} posiciones por delante de ti.` : '',
+                challenge.playerConfig.ageRange !== 'all' ? `Rango de edad: ${challenge.playerConfig.ageRange === 'adults' ? 'Solo adultos' : challenge.playerConfig.ageRange === 'kids' ? 'Solo niños' : 'Adolescentes'}.` : '',
+                challenge.participants > 1 ? `Número de participantes: ${challenge.participants}.` : 'Juega un solo participante.',
+                challenge.playerConfig.grouping !== 'individual' ? `Agrupación: ${challenge.playerConfig.grouping === 'pairs' ? 'Por parejas' : 'Por tríos'}.` : '',
+                `Duración: ${challenge.durationType === 'untilNext' ? "Hasta la siguiente prueba." :
+                    challenge.durationType === 'multiChallenge' ? `Durante las próximas ${challenge.durationLimit || 1} pruebas.` :
+                        challenge.timeLimit === 0 ? "Indefinido." :
+                            `${challenge.timeLimit} segundos.`
+                }`,
+                challenge.objects ? `Objetos necesarios: ${challenge.objects}.` : '',
+                challenge.punishment ? `Castigo si no se cumple: ${challenge.punishment}.` : '',
+                "¿Estáis listos? Pues a jugar."
+            ].filter(t => t !== '');
 
             let index = 0;
 
@@ -383,168 +401,220 @@ const GameMode = () => {
         <div className="full-screen-center" style={{ flexDirection: 'column', padding: '20px' }}>
             <div className="glass-panel" style={{ width: '100%', maxWidth: '800px', textAlign: 'center', minHeight: '60vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', position: 'relative' }}>
 
-                {/* Top Controls */}
-                <div style={{ position: 'absolute', top: '10px', left: '10px', display: 'flex', gap: '5px' }}>
-                    {(status === 'ANNOUNCING' || status === 'READY_TO_PLAY') && (
-                        <>
-                            <button className="btn-secondary" onClick={repeatInstructions} title="Repetir" disabled={isPlayingAudio} style={{ opacity: isPlayingAudio ? 0.5 : 1 }}>
-                                <FaRedo />
-                            </button>
-                            <button className="btn-secondary" onClick={pauseInstructions} title="Pausar"><FaPause /></button>
-                            <button className="btn-secondary" onClick={resumeInstructions} title="Continuar"><FaPlay /></button>
-                            <button className="btn-danger" onClick={superStopAllAudio} title="Parar Audio"><FaStop /></button>
-                        </>
-                    )}
+                {/* Header Section for Controls */}
+                <div style={{
+                    padding: '10px 15px',
+                    borderBottom: '1px solid rgba(255,255,255,0.1)',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: '10px'
+                }}>
+                    <div style={{ display: 'flex', gap: '5px' }}>
+                        {(status === 'ANNOUNCING' || status === 'READY_TO_PLAY') && (
+                            <>
+                                <button className="btn-secondary" onClick={repeatInstructions} title="Repetir" disabled={isPlayingAudio} style={{ opacity: isPlayingAudio ? 0.5 : 1, padding: '8px' }}>
+                                    <FaRedo />
+                                </button>
+                                <button className="btn-secondary" onClick={pauseInstructions} title="Pausar" style={{ padding: '8px' }}><FaPause /></button>
+                                <button className="btn-secondary" onClick={resumeInstructions} title="Continuar" style={{ padding: '8px' }}><FaPlay /></button>
+                                <button className="btn-danger" onClick={superStopAllAudio} title="Parar Audio" style={{ padding: '8px' }}><FaStop /></button>
+                            </>
+                        )}
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                        {status !== 'IDLE' && <button className="btn-secondary" onClick={stopAndReset} style={{ fontSize: '0.8rem' }}><FaStop /> RESET</button>}
+                        <button className="btn-danger" onClick={() => { stopAndReset(); navigate('/dashboard'); }} style={{ fontSize: '0.8rem' }}><FaStop /> SALIR</button>
+                    </div>
                 </div>
 
-                <div style={{ position: 'absolute', top: '10px', right: '10px', display: 'flex', gap: '10px' }}>
-                    <button className="btn-danger" onClick={() => { stopAndReset(); navigate('/dashboard'); }}><FaStop /> SALIR</button>
-                    {status !== 'IDLE' && <button className="btn-secondary" onClick={stopAndReset}><FaStop /> RESET</button>}
-                </div>
+                <div style={{ flex: 1, padding: '20px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
 
-                {/* IDLE STATE */}
-                {status === 'IDLE' && (
-                    <div className="animate-fade-in">
-                        <h1 style={{ marginBottom: '30px' }}>Configuración del Juego</h1>
 
-                        <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'center', gap: '10px' }}>
-                            <button className={`btn-secondary ${!isManualMode ? 'active' : ''}`} onClick={() => setIsManualMode(false)} style={{ background: !isManualMode ? 'var(--secondary)' : 'transparent', color: !isManualMode ? 'white' : 'white' }}>AUTOMÁTICO</button>
-                            <button className={`btn-secondary ${isManualMode ? 'active' : ''}`} onClick={() => setIsManualMode(true)} style={{ background: isManualMode ? 'var(--secondary)' : 'transparent', color: isManualMode ? 'white' : 'white' }}>MANUAL</button>
-                        </div>
+                    {/* IDLE STATE */}
+                    {status === 'IDLE' && (
+                        <div className="animate-fade-in">
+                            <h1 style={{ marginBottom: '30px' }}>Configuración del Juego</h1>
 
-                        <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginBottom: '20px' }}>
-                            <div>
-                                <label style={{ display: 'block', marginBottom: '10px' }}>Mínimo (seg)</label>
-                                <input className="glass-input" type="number" value={minTime} onChange={e => setMinTime(e.target.value)} style={{ textAlign: 'center', fontSize: '1.5rem', width: '100px' }} />
-                                <small style={{ display: 'block', color: 'gray' }}>Mín 60s</small>
-                            </div>
-                            <div>
-                                <label style={{ display: 'block', marginBottom: '10px' }}>Máximo (seg)</label>
-                                <input className="glass-input" type="number" value={maxTime} onChange={e => setMaxTime(e.target.value)} style={{ textAlign: 'center', fontSize: '1.5rem', width: '100px' }} />
-                            </div>
-                        </div>
+                            {isFamilyAdmin && (
+                                <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'center', gap: '10px' }}>
+                                    <button className={`btn-secondary ${!isManualMode ? 'active' : ''}`} onClick={() => setIsManualMode(false)} style={{ background: !isManualMode ? 'var(--secondary)' : 'transparent', color: 'white' }}>AUTOMÁTICO</button>
+                                    <button className={`btn-secondary ${isManualMode ? 'active' : ''}`} onClick={() => setIsManualMode(true)} style={{ background: isManualMode ? 'var(--secondary)' : 'transparent', color: 'white' }}>MANUAL</button>
+                                </div>
+                            )}
 
-                        <button className="btn-primary" style={{ fontSize: '2rem', padding: '20px 60px' }} onClick={startNextGameCycle}>
-                            <FaPlay /> CONTINUAR
-                        </button>
-                    </div>
-                )}
-
-                {/* COUNTDOWN STATE */}
-                {status === 'COUNTDOWN' && (
-                    <div>
-                        <h2>Próximo Reto en...</h2>
-                        <div style={{ fontSize: '8rem', fontWeight: 'bold', color: '#06b6d4', margin: '40px 0' }}>{countdown}</div>
-                        <p className="animate-pulse">Esperando...</p>
-                    </div>
-                )}
-
-                {status === 'MANUAL_SELECTION' && (
-                    <div className="animate-fade-in" style={{ textAlign: 'left', maxHeight: '70vh', overflowY: 'auto' }}>
-                        <h2 style={{ textAlign: 'center', marginBottom: '20px' }}>Selección Manual</h2>
-                        <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', justifyContent: 'center' }}>
-                            <div style={{ flex: 1, minWidth: '300px' }}>
-                                <h4 style={{ borderBottom: '1px solid gray' }}>Usuarios</h4>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                                    {manualUsers.map(u => (
-                                        <button
-                                            key={u._id}
-                                            className="btn-secondary"
-                                            style={{ textAlign: 'left', background: selectedManualUser?._id === u._id ? 'var(--secondary)' : 'rgba(255,255,255,0.1)' }}
-                                            onClick={() => handleManualUserClick(u)}
-                                        >
-                                            <FaUser /> {u.username}
-                                        </button>
-                                    ))}
+                            <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginBottom: '20px' }}>
+                                <div>
+                                    <label style={{ display: 'block', marginBottom: '10px' }}>Mínimo (seg)</label>
+                                    <input className="glass-input" type="number" value={minTime} onChange={e => setMinTime(e.target.value)} style={{ textAlign: 'center', fontSize: '1.5rem', width: '100px' }} />
+                                    <small style={{ display: 'block', color: 'gray' }}>Mín 60s</small>
+                                </div>
+                                <div>
+                                    <label style={{ display: 'block', marginBottom: '10px' }}>Máximo (seg)</label>
+                                    <input className="glass-input" type="number" value={maxTime} onChange={e => setMaxTime(e.target.value)} style={{ textAlign: 'center', fontSize: '1.5rem', width: '100px' }} />
                                 </div>
                             </div>
-                            {selectedManualUser && (
+
+                            <button className="btn-primary" style={{ fontSize: '2rem', padding: '20px 60px' }} onClick={startNextGameCycle}>
+                                <FaPlay /> CONTINUAR
+                            </button>
+                        </div>
+                    )}
+
+                    {/* COUNTDOWN STATE */}
+                    {status === 'COUNTDOWN' && (
+                        <div>
+                            <h2>Próximo Reto en...</h2>
+                            <div style={{ fontSize: '8rem', fontWeight: 'bold', color: '#06b6d4', margin: '40px 0' }}>{countdown}</div>
+                            <p className="animate-pulse">Esperando...</p>
+                        </div>
+                    )}
+
+                    {status === 'MANUAL_SELECTION' && (
+                        <div className="animate-fade-in" style={{ textAlign: 'left', maxHeight: '70vh', overflowY: 'auto' }}>
+                            <h2 style={{ textAlign: 'center', marginBottom: '20px' }}>Selección Manual</h2>
+                            <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', justifyContent: 'center' }}>
                                 <div style={{ flex: 1, minWidth: '300px' }}>
-                                    <h4 style={{ borderBottom: '1px solid gray' }}>Pruebas de {selectedManualUser.username}</h4>
+                                    <h4 style={{ borderBottom: '1px solid gray' }}>Usuarios</h4>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                                        {manualChallenges.map(c => (
+                                        {manualUsers.map(u => (
                                             <button
-                                                key={c._id}
+                                                key={u._id}
                                                 className="btn-secondary"
-                                                style={{ textAlign: 'left', background: selectedManualChallengeId === c._id ? 'var(--secondary)' : 'rgba(255,255,255,0.1)' }}
-                                                onClick={() => setSelectedManualChallengeId(c._id)}
+                                                style={{ textAlign: 'left', background: selectedManualUser?._id === u._id ? 'var(--secondary)' : 'rgba(255,255,255,0.1)' }}
+                                                onClick={() => handleManualUserClick(u)}
                                             >
-                                                <FaList /> {c.title}
+                                                <FaUser /> {u.username}
                                             </button>
                                         ))}
-                                        {manualChallenges.length === 0 && <p>Sin pruebas disponibles.</p>}
                                     </div>
+                                </div>
+                                {selectedManualUser && (
+                                    <div style={{ flex: 1, minWidth: '300px' }}>
+                                        <h4 style={{ borderBottom: '1px solid gray' }}>Pruebas de {selectedManualUser.username}</h4>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                            {manualChallenges.map(c => (
+                                                <button
+                                                    key={c._id}
+                                                    className="btn-secondary"
+                                                    style={{ textAlign: 'left', background: selectedManualChallengeId === c._id ? 'var(--secondary)' : 'rgba(255,255,255,0.1)' }}
+                                                    onClick={() => setSelectedManualChallengeId(c._id)}
+                                                >
+                                                    <FaList /> {c.title}
+                                                </button>
+                                            ))}
+                                            {manualChallenges.length === 0 && <p>Sin pruebas disponibles.</p>}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                            {selectedManualChallengeId && (
+                                <div style={{ marginTop: '20px', textAlign: 'center' }}>
+                                    <button className="btn-primary" style={{ fontSize: '1.5rem', padding: '10px 40px' }} onClick={confirmManualSelection}>
+                                        SELECCIONAR ESTA PRUEBA
+                                    </button>
                                 </div>
                             )}
                         </div>
-                        {selectedManualChallengeId && (
-                            <div style={{ marginTop: '20px', textAlign: 'center' }}>
-                                <button className="btn-primary" style={{ fontSize: '1.5rem', padding: '10px 40px' }} onClick={confirmManualSelection}>
-                                    SELECCIONAR ESTA PRUEBA
+                    )}
+
+                    {status === 'VICTIM_MUSIC' && (
+                        <div className="animate-fade-in">
+                            <FaMusic style={{ fontSize: '5rem', color: '#ec4899', marginBottom: '20px' }} className="animate-bounce" />
+                            <h2>¡Seleccionando Jugador!</h2>
+                            <h3 style={{ marginTop: '20px', fontSize: '2.5rem', color: 'var(--secondary)' }}>{currentData?.victim?.username}</h3>
+                            <p style={{ marginTop: '20px' }}>Escuchando himno... {musicTimer}s</p>
+
+                            <button
+                                className="btn-primary"
+                                style={{ marginTop: '30px', padding: '15px 40px' }}
+                                onClick={() => announceChallenge(currentData)}
+                            >
+                                <FaForward /> LEER PRUEBA
+                            </button>
+                        </div>
+                    )}
+
+                    {(status === 'ANNOUNCING' || status === 'READY_TO_PLAY') && (
+                        <div className="animate-fade-in">
+                            <h5 style={{ color: 'var(--text-muted)' }}>Jugador que Propone:</h5>
+                            <h2 style={{ color: 'var(--secondary)', marginBottom: '20px' }}>{currentData?.victim?.username}</h2>
+
+                            <div style={{ border: '1px solid rgba(255,255,255,0.2)', padding: '20px', borderRadius: '10px', background: 'rgba(0,0,0,0.2)' }}>
+                                <h1 style={{ marginBottom: '10px' }}>{currentData?.challenge?.title}</h1>
+                                <p style={{ fontSize: '1.4rem', marginBottom: '20px', minHeight: '80px' }}>{currentData?.challenge?.text}</p>
+
+                                {/* MULTIMEDIA DISPLAY */}
+                                {currentData?.challenge?.multimedia && currentData.challenge.multimedia.type !== 'none' && (
+                                    <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'center' }}>
+                                        {currentData.challenge.multimedia.type === 'image' && (
+                                            <img src={currentData.challenge.multimedia.url} alt="Prueba" style={{ maxWidth: '100%', maxHeight: '300px', borderRadius: '10px' }} />
+                                        )}
+                                        {currentData.challenge.multimedia.type === 'audio' && (
+                                            <audio controls src={currentData.challenge.multimedia.url} style={{ width: '100%' }} />
+                                        )}
+                                        {currentData.challenge.multimedia.type === 'video' && (
+                                            <video controls src={currentData.challenge.multimedia.url} style={{ maxWidth: '100%', maxHeight: '300px', borderRadius: '10px' }} />
+                                        )}
+                                    </div>
+                                )}
+
+                                {currentData?.challenge?.punishment && (
+                                    <div style={{ marginBottom: '15px', padding: '10px', background: 'rgba(255, 0, 0, 0.2)', borderRadius: '5px' }}>
+                                        <strong>💀 CASTIGO:</strong> {currentData.challenge.punishment}
+                                    </div>
+                                )}
+
+                                <div style={{ textAlign: 'left', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '15px', fontSize: '0.95rem', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '15px' }}>
+                                    <div><strong>👥 Participantes:</strong> {currentData?.challenge?.participants}</div>
+                                    <div><strong>⏱ Tiempo:</strong> {
+                                        currentData?.challenge?.durationType === 'untilNext' ? "Hasta Prox." :
+                                            currentData?.challenge?.durationType === 'multiChallenge' ? `Durante ${currentData?.challenge?.durationLimit} pruebas` :
+                                                currentData?.challenge?.timeLimit === 0 ? 'Indefinido' : currentData?.challenge?.timeLimit + 's'
+                                    }</div>
+                                    <div><strong>🎒 Objetos:</strong> {currentData?.challenge?.objects || 'Ninguno'}</div>
+                                    {currentData?.challenge?.playerConfig?.ageRange !== 'all' && (
+                                        <div><strong>🎂 Edad:</strong> {currentData.challenge.playerConfig.ageRange}</div>
+                                    )}
+                                    <div style={{ gridColumn: '1 / -1' }}><strong>📜 Reglas:</strong> {currentData?.challenge?.rules || 'Ninguna'}</div>
+                                </div>
+                            </div>
+
+                            <div style={{ marginTop: '30px', display: 'flex', justifyContent: 'center', gap: '20px', alignItems: 'center' }}>
+                                <button className="btn-secondary" style={{ fontSize: '1rem', padding: '10px 20px' }} onClick={skipChallenge}>
+                                    <FaForward /> Saltar Prueba
+                                </button>
+                                <button className="btn-primary" style={{ fontSize: '2rem', padding: '15px 50px' }} onClick={playChallenge} disabled={status === 'ANNOUNCING'}>
+                                    <FaPlay /> JUGAR
                                 </button>
                             </div>
-                        )}
-                    </div>
-                )}
+                        </div>
+                    )}
 
-                {status === 'VICTIM_MUSIC' && (
-                    <div className="animate-fade-in">
-                        <FaMusic style={{ fontSize: '5rem', color: '#ec4899', marginBottom: '20px' }} className="animate-bounce" />
-                        <h2>¡Seleccionando Jugador!</h2>
-                        <h3 style={{ marginTop: '20px', fontSize: '2rem' }}>{currentData?.victim?.username}</h3>
-                        <p style={{ marginTop: '30px' }}>Escuchando himno... {musicTimer}s</p>
-                    </div>
-                )}
-
-                {(status === 'ANNOUNCING' || status === 'READY_TO_PLAY') && (
-                    <div className="animate-fade-in">
-                        <h5 style={{ color: 'var(--text-muted)' }}>Jugador que Propone:</h5>
-                        <h2 style={{ color: 'var(--secondary)', marginBottom: '20px' }}>{currentData?.victim?.username}</h2>
-
-                        <div style={{ border: '1px solid rgba(255,255,255,0.2)', padding: '20px', borderRadius: '10px', background: 'rgba(0,0,0,0.2)' }}>
-                            <h1 style={{ marginBottom: '10px' }}>{currentData?.challenge?.title}</h1>
-                            <p style={{ fontSize: '1.4rem', marginBottom: '20px', minHeight: '80px' }}>{currentData?.challenge?.text}</p>
-
-                            <div style={{ textAlign: 'left', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', fontSize: '1rem' }}>
-                                <div><strong>Participantes:</strong> {currentData?.challenge?.participants}</div>
-                                <div><strong>Tiempo:</strong> {currentData?.challenge?.timeLimit === 0 ? 'Indefinido' : currentData?.challenge?.timeLimit + 's'}</div>
-                                <div><strong>Objetos:</strong> {currentData?.challenge?.objects || 'Ninguno'}</div>
-                                <div style={{ gridColumn: '1 / -1' }}><strong>Reglas:</strong> {currentData?.challenge?.rules || 'Ninguna'}</div>
+                    {status === 'PLAYING_CHALLENGE' && (
+                        <div>
+                            <h2 style={{ color: '#ec4899' }}>¡EN CURSO!</h2>
+                            <div style={{ fontSize: '8rem', fontWeight: 'bold', fontFamily: 'monospace', margin: '40px 0' }}>
+                                {countdown}
                             </div>
+                            <p>{currentData?.challenge?.title}</p>
+                            {countdown === '∞' && (
+                                <button className="btn-primary" onClick={finishChallenge}>TERMINAR</button>
+                            )}
                         </div>
+                    )}
 
-                        <div style={{ marginTop: '30px', display: 'flex', justifyContent: 'center', gap: '20px', alignItems: 'center' }}>
-                            <button className="btn-secondary" style={{ fontSize: '1rem', padding: '10px 20px' }} onClick={skipChallenge}>
-                                <FaForward /> Saltar Prueba
+                    {status === 'FINISHED' && (
+                        <div className="animate-fade-in">
+                            <h1 style={{ fontSize: '4rem', color: '#ec4899', marginBottom: '40px' }}>¡Tiempo Terminado!</h1>
+                            <button className="btn-primary" style={{ fontSize: '2rem', padding: '20px 60px' }} onClick={startNextGameCycle}>
+                                <FaForward /> CONTINUAR
                             </button>
-                            <button className="btn-primary" style={{ fontSize: '2rem', padding: '15px 50px' }} onClick={playChallenge} disabled={status === 'ANNOUNCING'}>
-                                <FaPlay /> JUGAR
-                            </button>
                         </div>
-                    </div>
-                )}
-
-                {status === 'PLAYING_CHALLENGE' && (
-                    <div>
-                        <h2 style={{ color: '#ec4899' }}>¡EN CURSO!</h2>
-                        <div style={{ fontSize: '8rem', fontWeight: 'bold', fontFamily: 'monospace', margin: '40px 0' }}>
-                            {countdown}
-                        </div>
-                        <p>{currentData?.challenge?.title}</p>
-                        {countdown === '∞' && (
-                            <button className="btn-primary" onClick={finishChallenge}>TERMINAR</button>
-                        )}
-                    </div>
-                )}
-
-                {status === 'FINISHED' && (
-                    <div className="animate-fade-in">
-                        <h1 style={{ fontSize: '4rem', color: '#ec4899', marginBottom: '40px' }}>¡Tiempo Terminado!</h1>
-                        <button className="btn-primary" style={{ fontSize: '2rem', padding: '20px 60px' }} onClick={startNextGameCycle}>
-                            <FaForward /> CONTINUAR
-                        </button>
-                    </div>
-                )}
+                    )}
+                </div>
             </div>
         </div>
     );

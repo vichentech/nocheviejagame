@@ -151,8 +151,8 @@ router.get('/users/:userId/challenges', [auth, adminAuth], async (req, res) => {
 // @desc    Update challenge
 router.put('/challenges/:id', [auth, adminAuth], async (req, res) => {
     // Allow updating title, text, timeLimit, participants, objects, rules, etc.
-    const { title, text, timeLimit, participants, objects, rules, notes, voiceConfig } = req.body;
-    const challengeFields = { title, text, timeLimit, participants, objects, rules, notes, voiceConfig };
+    const { title, text, timeLimit, participants, objects, rules, notes, voiceConfig, punishment, multimedia, playerConfig } = req.body;
+    const challengeFields = { title, text, timeLimit, participants, objects, rules, notes, voiceConfig, punishment, multimedia, playerConfig };
 
     // Remove undefined
     Object.keys(challengeFields).forEach(key => challengeFields[key] === undefined && delete challengeFields[key]);

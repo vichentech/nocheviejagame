@@ -53,6 +53,29 @@ router.delete('/users/:id', [auth, familyAdminAuth], async (req, res) => {
     }
 });
 
+// @route   PUT /api/family/users/:id/permissions
+// @desc    Update user permissions (Enable/Disable Play)
+router.put('/users/:id/permissions', [auth, familyAdminAuth], async (req, res) => {
+    try {
+        const { canPlay } = req.body;
+
+        const userToUpdate = await User.findById(req.params.id);
+        if (!userToUpdate) return res.status(404).json({ msg: 'User not found' });
+
+        if (userToUpdate.gameId.toString() !== req.user.gameId) {
+            return res.status(403).json({ msg: 'Unauthorized' });
+        }
+
+        userToUpdate.canPlay = canPlay;
+        await userToUpdate.save();
+
+        res.json(userToUpdate);
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).send('Server error');
+    }
+});
+
 // @route   PUT /api/family/game
 // @desc    Update my game (Name or Password)
 router.put('/game', [auth, familyAdminAuth], async (req, res) => {

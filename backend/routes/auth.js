@@ -58,12 +58,12 @@ router.post('/user/register', async (req, res) => {
 
         // Check if this is the FIRST user in the game
         const userCount = await User.countDocuments({ gameId });
-        const role = userCount === 0 ? 'family_admin' : 'user';
+        const role = userCount === 0 ? 'family_admin' : 'jugador';
 
         const salt = await bcrypt.genSalt(10);
         const passwordHash = await bcrypt.hash(password, salt);
 
-        user = new User({ username, passwordHash, gameId, role });
+        user = new User({ username, passwordHash, gameId, role, canPlay: role === 'family_admin' });
         await user.save();
 
         // If family admin, update the game
@@ -71,10 +71,10 @@ router.post('/user/register', async (req, res) => {
             await Game.findByIdAndUpdate(gameId, { adminUserId: user._id });
         }
 
-        const payload = { user: { id: user.id, username: user.username, role: user.role, gameId: user.gameId } };
+        const payload = { user: { id: user.id, username: user.username, role: user.role, gameId: user.gameId, canPlay: user.canPlay } };
         jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '365d' }, (err, token) => {
             if (err) throw err;
-            res.json({ token, user: { id: user.id, username: user.username, role: user.role } });
+            res.json({ token, user: { id: user.id, username: user.username, role: user.role, canPlay: user.canPlay } });
         });
     } catch (err) {
         console.error(err.message);
@@ -94,10 +94,10 @@ router.post('/user/login', async (req, res) => {
         const isMatch = await bcrypt.compare(password, user.passwordHash);
         if (!isMatch) return res.status(400).json({ msg: 'Invalid Credentials' });
 
-        const payload = { user: { id: user.id, username: user.username, role: user.role, gameId: user.gameId } };
+        const payload = { user: { id: user.id, username: user.username, role: user.role, gameId: user.gameId, canPlay: user.canPlay } };
         jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '365d' }, (err, token) => {
             if (err) throw err;
-            res.json({ token, user: { id: user.id, username: user.username, role: user.role } });
+            res.json({ token, user: { id: user.id, username: user.username, role: user.role, canPlay: user.canPlay } });
         });
     } catch (err) {
         console.error(err.message);
@@ -117,6 +117,21 @@ router.post('/admin/login', async (req, res) => {
         });
     } else {
         res.status(400).json({ msg: 'Invalid Admin Credentials' });
+    }
+});
+
+// @route   GET api/auth/me
+// @desc    Get current user (for refreshing state)
+router.get('/me', require('../middleware/auth'), async (req, res) => {
+    try {
+        if (req.user.role === 'admin') {
+            return res.json({ id: 'admin', role: 'admin' });
+        }
+        const user = await User.findById(req.user.id).select('-passwordHash');
+        res.json(user);
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).send('Server error');
     }
 });
 

@@ -26,7 +26,7 @@ router.post('/', auth, async (req, res) => {
 // @access  Private
 router.get('/', auth, async (req, res) => {
     try {
-        const challenges = await Challenge.find({ gameId: req.user.gameId }).sort({ createdAt: -1 });
+        const challenges = await Challenge.find({ gameId: req.user.gameId, uploaderId: req.user.id }).sort({ createdAt: -1 });
         res.json(challenges);
     } catch (err) {
         console.error(err.message);

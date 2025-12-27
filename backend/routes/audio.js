@@ -20,7 +20,10 @@ const storage = multer.diskStorage({
     }
 });
 
-const upload = multer({ storage: storage });
+const upload = multer({
+    storage: storage,
+    limits: { fileSize: 15 * 1024 * 1024 } // 15MB limit
+});
 
 // @route   POST api/audio
 // @desc    Upload an audio file
@@ -31,10 +34,22 @@ router.post('/', [auth, upload.single('file')], async (req, res) => {
             return res.status(400).json({ msg: 'No file uploaded' });
         }
 
+        // Check if user already has an audio file and delete it if so
+        const existingAudio = await Audio.findOne({ uploaderId: req.user.id });
+        if (existingAudio) {
+            // Remove from filesystem
+            if (fs.existsSync(existingAudio.path)) {
+                fs.unlinkSync(existingAudio.path);
+            }
+            // Remove from DB
+            await Audio.findByIdAndDelete(existingAudio._id);
+        }
+
         const newAudio = new Audio({
             filename: req.file.filename,
             path: req.file.path,
             originalName: req.file.originalname,
+            duration: req.body.duration || 30,
             uploaderId: req.user.id,
             gameId: req.user.gameId
         });
@@ -52,7 +67,11 @@ router.post('/', [auth, upload.single('file')], async (req, res) => {
 // @access  Private
 router.get('/', auth, async (req, res) => {
     try {
-        const audios = await Audio.find({ gameId: req.user.gameId }).sort({ createdAt: -1 });
+        let query = { gameId: req.user.gameId, uploaderId: req.user.id };
+
+        // Removed family_admin exception: Everyone only sees THEIR own audio in the list
+
+        const audios = await Audio.find(query).sort({ createdAt: -1 });
         res.json(audios);
     } catch (err) {
         console.error(err.message);
@@ -68,7 +87,13 @@ router.delete('/:id', auth, async (req, res) => {
         const audio = await Audio.findById(req.params.id);
         if (!audio) return res.status(404).json({ msg: 'Audio not found' });
 
-        if (audio.uploaderId.toString() !== req.user.id && req.user.role !== 'admin') {
+        // Check game ownership for family_admin or regular user (superadmin bypasses)
+        if (req.user.role !== 'admin' && audio.gameId.toString() !== req.user.gameId) {
+            return res.status(403).json({ msg: 'Not authorized for this game' });
+        }
+
+        // Allow if owner OR admin OR family_admin
+        if (audio.uploaderId.toString() !== req.user.id && req.user.role !== 'admin' && req.user.role !== 'family_admin') {
             return res.status(401).json({ msg: 'Not authorized' });
         }
 

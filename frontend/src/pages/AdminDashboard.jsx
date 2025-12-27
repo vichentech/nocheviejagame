@@ -6,7 +6,7 @@ import { FaGamepad, FaUser, FaList, FaEdit, FaTrash, FaSignOutAlt, FaSearch, FaK
 import Modal from '../components/Modal';
 
 const AdminDashboard = () => {
-    const { logout } = useAuth();
+    const { logoutGame } = useAuth();
     const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState('games'); // games, users, challenges
 
@@ -152,32 +152,62 @@ const AdminDashboard = () => {
                 objects: challenge.objects || '',
                 rules: challenge.rules || '',
                 notes: challenge.notes || '',
-                voiceConfig: challenge.voiceConfig || {}
+
+                voiceConfig: challenge.voiceConfig || {},
+                punishment: challenge.punishment || '',
+                multimedia: challenge.multimedia || { type: 'none', url: '', filename: '' }
             });
 
+            const [uploading, setUploading] = useState(false);
+
+            const handleFileUpload = async (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const formData = new FormData();
+                formData.append('file', file);
+
+                setUploading(true);
+                try {
+                    const res = await axios.post('/api/upload', formData, {
+                        headers: { 'Content-Type': 'multipart/form-data' }
+                    });
+                    setLocalData(prev => ({
+                        ...prev,
+                        multimedia: {
+                            ...prev.multimedia,
+                            url: res.data.url,
+                            filename: res.data.originalName
+                        }
+                    }));
+                } catch (err) {
+                    alert('Error subiendo archivo');
+                    console.error(err);
+                } finally {
+                    setUploading(false);
+                }
+            };
+
             return (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '60vh', overflowY: 'auto', paddingRight: '10px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', maxHeight: '60vh', overflowY: 'auto', paddingRight: '5px' }}>
                     <div>
-                        <label style={{ fontSize: '0.8rem', color: 'gray' }}>Título</label>
-                        <input className="glass-input" value={localData.title} onChange={e => setLocalData({ ...localData, title: e.target.value })} />
+                        <input className="glass-input" value={localData.title} onChange={e => setLocalData({ ...localData, title: e.target.value })} placeholder="Título" style={{ fontWeight: 'bold' }} />
                     </div>
                     <div>
-                        <label style={{ fontSize: '0.8rem', color: 'gray' }}>Descripción (Texto)</label>
-                        <textarea className="glass-input" rows="3" value={localData.text} onChange={e => setLocalData({ ...localData, text: e.target.value })} />
+                        <textarea className="glass-input" rows="2" value={localData.text} onChange={e => setLocalData({ ...localData, text: e.target.value })} placeholder="Descripción del reto" style={{ fontSize: '0.9rem' }} />
                     </div>
-                    <div style={{ display: 'flex', gap: '10px' }}>
+                    <div style={{ display: 'flex', gap: '5px' }}>
                         <div style={{ flex: 1 }}>
-                            <label style={{ fontSize: '0.8rem', color: 'gray' }}>Tiempo (s)</label>
-                            <input className="glass-input" type="number" value={localData.timeLimit} onChange={e => setLocalData({ ...localData, timeLimit: e.target.value })} />
+                            <label style={{ fontSize: '0.7rem', color: 'gray' }}>Tiempo(s)</label>
+                            <input className="glass-input" type="number" value={localData.timeLimit} onChange={e => setLocalData({ ...localData, timeLimit: e.target.value })} style={{ padding: '5px' }} />
                         </div>
                         <div style={{ flex: 1 }}>
-                            <label style={{ fontSize: '0.8rem', color: 'gray' }}>Participantes</label>
-                            <input className="glass-input" type="number" value={localData.participants} onChange={e => setLocalData({ ...localData, participants: e.target.value })} />
+                            <label style={{ fontSize: '0.7rem', color: 'gray' }}>Participantes</label>
+                            <input className="glass-input" type="number" value={localData.participants} onChange={e => setLocalData({ ...localData, participants: e.target.value })} style={{ padding: '5px' }} />
                         </div>
                     </div>
                     <div>
-                        <label style={{ fontSize: '0.8rem', color: 'gray' }}>Objetos Requeridos</label>
-                        <input className="glass-input" value={localData.objects} onChange={e => setLocalData({ ...localData, objects: e.target.value })} />
+                        <input className="glass-input" value={localData.objects} onChange={e => setLocalData({ ...localData, objects: e.target.value })} placeholder="Objetos requeridos" style={{ fontSize: '0.8rem', padding: '5px' }} />
                     </div>
                     <div>
                         <label style={{ fontSize: '0.8rem', color: 'gray' }}>Reglas Especiales</label>
@@ -204,6 +234,34 @@ const AdminDashboard = () => {
                         </div>
                     </div>
 
+                    <div style={{ marginTop: '5px' }}>
+                        <textarea className="glass-input" rows="2" value={localData.punishment} onChange={e => setLocalData({ ...localData, punishment: e.target.value })} placeholder="Castigo (Loser)" style={{ fontSize: '0.9rem', borderColor: 'rgba(255,0,0,0.3)' }} />
+                    </div>
+
+                    <div style={{ marginTop: '5px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '5px' }}>
+                        <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+                            <select className="glass-input" value={localData.multimedia?.type || 'none'}
+                                onChange={e => setLocalData({ ...localData, multimedia: { ...localData.multimedia, type: e.target.value } })}
+                                style={{ padding: '5px', fontSize: '0.8rem' }}>
+                                <option value="none">Sin Multimedia</option>
+                                <option value="image">Imagen</option>
+                                <option value="audio">Audio</option>
+                                <option value="video">Video</option>
+                            </select>
+                            {localData.multimedia?.type !== 'none' && (
+                                <div style={{ flex: 1 }}>
+                                    <input type="file" className="glass-input" onChange={handleFileUpload} style={{ padding: '5px', fontSize: '0.7rem' }} />
+                                </div>
+                            )}
+                        </div>
+                        {uploading && <span className="animate-pulse" style={{ fontSize: '0.7rem' }}> Subiendo...</span>}
+                        {localData.multimedia?.url && (
+                            <div style={{ fontSize: '0.7rem', color: '#4ade80', marginLeft: '5px' }}>
+                                🔗 {localData.multimedia.filename || 'Archivo cargado'}
+                            </div>
+                        )}
+                    </div>
+
                     <button className="btn-primary" style={{ marginTop: '10px' }} onClick={async () => {
                         try {
                             await axios.put(`/api/admin/challenges/${challenge._id}`, localData);
@@ -211,7 +269,7 @@ const AdminDashboard = () => {
                             if (selectedUserId) fetchChallenges(selectedUserId);
                         } catch (e) { alert('Error updating'); }
                     }}>Guardar CAMBIOS</button>
-                </div>
+                </div >
             )
         };
         showModal('EDITAR COMPLETAMENTE PRUEBA', '', 'custom', null, <EditForm />);
@@ -233,7 +291,7 @@ const AdminDashboard = () => {
 
             <div className="glass-panel" style={{ marginTop: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <h2>🔧 Admin Panel</h2>
-                <button className="btn-secondary" onClick={() => { logout(); navigate('/'); }}><FaSignOutAlt /> Salir</button>
+                <button className="btn-secondary" onClick={() => { logoutGame(); navigate('/'); }}><FaSignOutAlt /> Salir</button>
             </div>
 
             <div style={{ marginTop: '20px', display: 'flex', gap: '10px' }}>

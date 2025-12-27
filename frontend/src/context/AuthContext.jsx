@@ -14,14 +14,36 @@ export const AuthProvider = ({ children }) => {
     // Initial auth check
     useEffect(() => {
         const checkAuth = async () => {
-            // In a real app we'd validate token with backend /me endpoint. 
-            // Here we rely on decode or just presence and handling 401s later.
-            // For simplicity, if token exists, we decode it or trust it until 401.
-            // We also need game info. Ideally stored in sessionStorage too?
             const storedGame = JSON.parse(sessionStorage.getItem('gameInfo'));
-            if (token && storedGame) {
-                setUser({ ...JSON.parse(atob(token.split('.')[1])).user }); // Simple decode
+            if (storedGame) {
                 setGame(storedGame);
+            }
+
+            if (token) {
+                axios.defaults.headers.common['x-auth-token'] = token;
+                if (storedGame) {
+                    try {
+                        const res = await axios.get('/api/auth/me');
+                        const userData = res.data;
+                        if (!userData.id && userData._id) userData.id = userData._id;
+                        setUser(userData);
+                    } catch (err) {
+                        // If token invalid, clear it
+                        console.error("Token verification failed", err);
+                        logoutGame(); // Use logoutGame to be safe, or just clear user?
+                        // If we use logoutGame it clears game too, which might be annoying if just user token expired.
+                        // But if token is invalid, better start fresh.
+                    }
+                } else {
+                    // Maybe it's admin?
+                    try {
+                        // Admin logic might be different if they don't have gameInfo
+                        const decoded = JSON.parse(atob(token.split('.')[1]));
+                        if (decoded.user.role === 'admin') {
+                            setUser({ id: 'admin', role: 'admin', username: 'vichen' });
+                        }
+                    } catch (e) { logoutGame(); }
+                }
             }
             setLoading(false);
         };
@@ -70,19 +92,29 @@ export const AuthProvider = ({ children }) => {
         axios.defaults.headers.common['x-auth-token'] = res.data.token;
     };
 
-    const logout = () => {
+    const logoutGame = () => {
         sessionStorage.removeItem('token');
         setToken(null);
         setUser(null);
-        // Do we keep game? Requirement says "First page to create or access game".
-        // Maybe logout clears everything.
         sessionStorage.removeItem('gameInfo');
         setGame(null);
         delete axios.defaults.headers.common['x-auth-token'];
     };
 
+    const logoutUser = () => {
+        sessionStorage.removeItem('token');
+        setToken(null);
+        setUser(null);
+        delete axios.defaults.headers.common['x-auth-token'];
+        // Ensure game is not null, restore from storage if needed (unlikely but safe)
+        const storedGame = JSON.parse(sessionStorage.getItem('gameInfo'));
+        if (!game && storedGame) {
+            setGame(storedGame);
+        }
+    };
+
     return (
-        <AuthContext.Provider value={{ user, game, loginGame, registerGame, loginUser, registerUser, loginAdmin, logout, loading }}>
+        <AuthContext.Provider value={{ user, game, loginGame, registerGame, loginUser, registerUser, loginAdmin, logoutGame, logoutUser, loading }}>
             {children}
         </AuthContext.Provider>
     );

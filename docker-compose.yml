@@ -2,11 +2,16 @@ version: '3.8'
 
 services:
   mongo:
-    image: mongo:6-jammy
+    image: mongo:latest
     container_name: nochevieja_mongo
     restart: unless-stopped
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_ROOT_USER}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_ROOT_PASSWORD}
     volumes:
       - mongo_data:/data/db
+    ports:
+      - "27017:27017"
     networks:
       - app_network
 
@@ -43,9 +48,29 @@ services:
     networks:
       - app_network
 
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: nochevieja_n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=${N8N_BASIC_AUTH_ACTIVE}
+      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD}
+      - N8N_HOST=${N8N_HOST}
+      - N8N_PORT=${N8N_PORT}
+      - N8N_PROTOCOL=${N8N_PROTOCOL}
+      - WEBHOOK_URL=${WEBHOOK_URL}
+    networks:
+      - app_network
+    volumes:
+      - n8n_data:/home/node/.n8n
+
 networks:
   app_network:
     driver: bridge
 
 volumes:
   mongo_data:
+  n8n_data:

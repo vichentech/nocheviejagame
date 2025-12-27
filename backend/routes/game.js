@@ -127,18 +127,7 @@ router.get('/random', auth, async (req, res) => {
 
         let selectedChallenge = null;
 
-        if (availableChallenges.length === 0) {
-            // Fallback: If victim has NO challenges at all (available or not), pick a random challenge from ANYONE?
-            // "Una vez completados todos los jugadores se reinicia...". Implies we stick to the victim if possible.
-            // If victim has 0 challenges total, we must pick someone else's challenge logic.
-            const anyChallenge = await Challenge.aggregate([
-                { $match: { gameId: new mongoose.Types.ObjectId(gameId) } },
-                { $sample: { size: 1 } }
-            ]);
-            if (anyChallenge.length > 0) {
-                selectedChallenge = await Challenge.findById(anyChallenge[0]._id).populate('soundId');
-            }
-        } else {
+        if (availableChallenges.length > 0) {
             selectedChallenge = availableChallenges[Math.floor(Math.random() * availableChallenges.length)];
         }
 

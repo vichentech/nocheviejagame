@@ -2,11 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { FaList, FaPlus, FaMusic, FaPlay, FaTrash, FaSignOutAlt, FaStop, FaEdit, FaKey, FaUser, FaPause, FaCrown, FaCog, FaCheck, FaTimes } from 'react-icons/fa';
+import { FaList, FaPlus, FaMusic, FaPlay, FaTrash, FaSignOutAlt, FaStop, FaEdit, FaKey, FaUser, FaPause, FaCrown, FaCog, FaCheck, FaTimes, FaLock } from 'react-icons/fa';
 import Modal from '../components/Modal';
 
 const Dashboard = () => {
-    const { user, game, logout } = useAuth();
+    const { user, game, logoutUser, logoutGame } = useAuth();
     const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState('challenges');
     const [challenges, setChallenges] = useState([]);
@@ -21,12 +21,19 @@ const Dashboard = () => {
 
     // Form States
     const [newChallenge, setNewChallenge] = useState({
-        title: '', text: '', timeLimit: 60, participants: 1, objects: '', description: '', rules: '', notes: '',
+        title: '', text: '', timeLimit: 60,
+        durationLimit: 1, durationType: 'fixed', // 'fixed', 'untilNext', 'multiChallenge'
+        participants: 1, objects: '', description: '', rules: '', notes: '',
         voiceConfig: { name: 'default', rate: 1.0, pitch: 1.0 },
-        isTimeUntilNext: false
+        punishment: '',
+        playerConfig: { targetType: 'all', grouping: 'individual', position: 'none', positionOffset: 0, ageRange: 'all', customText: '' },
+        multimedia: { image: null, audio: null, video: null, document: null }
     });
+    const [formTab, setFormTab] = useState('game'); // game, players, tools, rules, customization
+    const [uploadingMedia, setUploadingMedia] = useState(false);
     const [editingId, setEditingId] = useState(null);
     const [audioFile, setAudioFile] = useState(null);
+    const [audioDuration, setAudioDuration] = useState(30);
     const [voices, setVoices] = useState([]);
     const synthRef = useRef(window.speechSynthesis);
 
@@ -34,11 +41,34 @@ const Dashboard = () => {
         fetchChallenges();
         fetchAudios();
         const loadVoices = () => {
-            setVoices(synthRef.current.getVoices());
+            const vs = synthRef.current.getVoices();
+            setVoices(vs);
         };
         loadVoices();
         synthRef.current.onvoiceschanged = loadVoices;
     }, []);
+
+    // Auto-select Spanish voice if 'default' and available
+    useEffect(() => {
+        if (voices.length > 0 && newChallenge.voiceConfig.name === 'default') {
+            const esVoice = voices.find(v => v.lang.toLowerCase().startsWith('es'));
+            if (esVoice) {
+                setNewChallenge(prev => ({
+                    ...prev,
+                    voiceConfig: { ...prev.voiceConfig, name: esVoice.name }
+                }));
+            }
+        }
+    }, [voices, activeTab]); // Run when voices load or tab changes (reset)
+
+    // Player Constraint Logic: forward -> participants = 1
+    useEffect(() => {
+        if (newChallenge.playerConfig.targetType === 'forward') {
+            if (newChallenge.participants !== 1) {
+                setNewChallenge(prev => ({ ...prev, participants: 1 }));
+            }
+        }
+    }, [newChallenge.playerConfig.targetType]);
 
     useEffect(() => {
         if (user.role === 'family_admin') {
@@ -75,8 +105,12 @@ const Dashboard = () => {
         e.preventDefault();
         try {
             const challengeToSave = { ...newChallenge };
-            if (challengeToSave.isTimeUntilNext) {
+
+            // Map durationType to timeLimit (legacy support for untilNext)
+            if (challengeToSave.durationType === 'untilNext') {
                 challengeToSave.timeLimit = 0;
+            } else if (challengeToSave.durationType === 'multiChallenge') {
+                challengeToSave.timeLimit = -1; // Special value? Or just keep it as is
             }
 
             if (editingId) {
@@ -98,7 +132,16 @@ const Dashboard = () => {
     };
 
     const resetForm = () => {
-        setNewChallenge({ title: '', text: '', timeLimit: 60, participants: 1, objects: '', description: '', rules: '', notes: '', voiceConfig: { name: 'default', rate: 1.0, pitch: 1.0 }, isTimeUntilNext: false });
+        setNewChallenge(prev => ({
+            title: '', text: '', timeLimit: 60,
+            durationLimit: 1, durationType: 'fixed',
+            participants: 1, objects: '', description: '', rules: '', notes: '',
+            voiceConfig: { name: 'default', rate: 1.0, pitch: 1.0 },
+            punishment: '',
+            playerConfig: { targetType: 'all', grouping: 'individual', position: 'none', positionOffset: 0, ageRange: 'all', customText: '' },
+            multimedia: { image: null, audio: null, video: null, document: null }
+        }));
+        setFormTab('game');
         setEditingId(null);
     };
 
@@ -109,7 +152,34 @@ const Dashboard = () => {
         } else if (!vConfig) {
             vConfig = { name: 'default', rate: 1.0, pitch: 1.0 };
         }
-        setNewChallenge({ ...challenge, voiceConfig: vConfig, isTimeUntilNext: challenge.timeLimit === 0 });
+
+        const pConfig = challenge.playerConfig || { targetType: 'all', grouping: 'individual', position: 'none', positionOffset: 0, ageRange: 'all', customText: '' };
+
+        // Handle multimedia legacy or new format
+        let mMedia = { image: null, audio: null, video: null, document: null };
+        if (challenge.multimedia) {
+            if (challenge.multimedia.type && challenge.multimedia.type !== 'none') {
+                // Legacy format conversion
+                mMedia[challenge.multimedia.type] = { url: challenge.multimedia.url, filename: challenge.multimedia.filename };
+            } else {
+                // New format or empty
+                mMedia = { ...mMedia, ...challenge.multimedia };
+            }
+        }
+
+        // Infer durationMode from legacy data if missing
+        let dType = challenge.durationType || 'fixed';
+        if (challenge.timeLimit === 0) dType = 'untilNext';
+        else if (challenge.timeLimit === -1) dType = 'multiChallenge';
+
+        setNewChallenge({
+            ...challenge,
+            voiceConfig: vConfig,
+            playerConfig: pConfig,
+            multimedia: mMedia,
+            durationType: dType,
+            durationLimit: challenge.durationLimit || 1
+        });
         setEditingId(challenge._id);
         setActiveTab('new');
     };
@@ -141,17 +211,82 @@ const Dashboard = () => {
         // Queue utterances
         speakText(`Título: ${challenge.title}`);
         speakText(`Descripción: ${challenge.text}`);
-        speakText(`Participantes: ${challenge.participants}`);
-        if (challenge.timeLimit === 0) {
+
+        // Player config reading logic
+        const pConfig = challenge.playerConfig || {};
+        const targetMap = { 'all': 'Todos', 'odd': 'Impares', 'even': 'Pares', 'random': 'Aleatorio', 'custom': 'Personalizado', 'forward': 'Posición Relativa' };
+
+        if (pConfig.targetType === 'forward') {
+            speakText(`Participante: Jugador a ${pConfig.positionOffset || 1} posiciones.`);
+        } else if (pConfig.targetType && pConfig.targetType !== 'all') {
+            speakText(`Jugadores: ${targetMap[pConfig.targetType] || pConfig.targetType}`);
+        }
+
+        if (pConfig.targetType === 'custom' && pConfig.customText) {
+            speakText(`Detalles: ${pConfig.customText}`);
+        }
+        if (pConfig.grouping && pConfig.grouping !== 'individual' && challenge.participants > 1) {
+            speakText(`Agrupación: ${pConfig.grouping === 'pairs' ? 'Por Parejas' : 'Por Tríos'}`);
+        }
+        if (pConfig.position && pConfig.position !== 'none' && pConfig.targetType !== 'forward') {
+            let posText = '';
+            switch (pConfig.position) {
+                case 'next': posText = 'Al lado'; break;
+                case 'opposite': posText = 'Enfrente'; break;
+                case 'left': posText = 'A la izquierda'; break;
+                case 'right': posText = 'A la derecha'; break;
+                case 'forward': posText = `${pConfig.positionOffset || 1} posiciones adelante`; break;
+            }
+            if (posText) speakText(`Posición: ${posText}`);
+        }
+
+        if (challenge.durationType === 'untilNext' || challenge.timeLimit === 0) {
             speakText("Tiempo: Hasta la siguiente prueba");
+        } else if (challenge.durationType === 'multiChallenge' || challenge.timeLimit === -1) {
+            speakText(`Tiempo: Durante ${challenge.durationLimit || 1} pruebas`);
         } else {
             speakText(`Tiempo: ${challenge.timeLimit} segundos`);
         }
         if (challenge.objects) {
             speakText(`Objetos necesarios: ${challenge.objects}`);
         }
+
         if (challenge.rules) {
             speakText(`Reglas adicionales: ${challenge.rules}`);
+        }
+
+        if (challenge.punishment) {
+            speakText(`Castigo: ${challenge.punishment}`);
+        }
+    };
+
+    const handleMediaUpload = async (e, type) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        setUploadingMedia(true);
+        try {
+            const res = await axios.post('/api/upload', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+
+            setNewChallenge(prev => ({
+                ...prev,
+                multimedia: {
+                    ...prev.multimedia,
+                    [type]: { // Update specific type
+                        url: res.data.url,
+                        filename: res.data.originalName || file.name // Fallback if originalName not in res
+                    }
+                }
+            }));
+        } catch (err) {
+            showModal('Error', 'Error subiendo archivo multimedia');
+        } finally {
+            setUploadingMedia(false);
         }
     };
 
@@ -160,6 +295,7 @@ const Dashboard = () => {
         if (!audioFile) return;
         const formData = new FormData();
         formData.append('file', audioFile);
+        formData.append('duration', audioDuration);
         try {
             await axios.post('/api/audio', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
             setAudioFile(null);
@@ -199,6 +335,17 @@ const Dashboard = () => {
         });
     };
 
+    const handleTogglePlayPermission = async (userId, newStatus) => {
+        try {
+            await axios.put(`/api/family/users/${userId}/permissions`, { canPlay: newStatus });
+            // Optimistic update or refetch
+            setFamilyUsers(prev => prev.map(u => u._id === userId ? { ...u, canPlay: newStatus } : u));
+        } catch (e) {
+            console.error(e);
+            showModal('Error', 'No se pudo cambiar el permiso');
+        }
+    };
+
     const handleUpdateGame = (name, password) => {
         const payload = {};
         if (name) payload.name = name;
@@ -215,7 +362,7 @@ const Dashboard = () => {
         showModal('⚠ BORRADO TOTAL ⚠', 'ESTA ACCIÓN ES IRREVERSIBLE.\n\nSe borrará TU JUEGO, TODOS LOS USUARIOS y TODAS LAS PRUEBAS.\n\n¿CONTINUAR?', 'confirm', async () => {
             try {
                 await axios.delete('/api/family/game');
-                logout();
+                logoutGame();
                 navigate('/');
             } catch (e) { showModal('Error', 'No se pudo borrar el juego'); }
         });
@@ -285,6 +432,14 @@ const Dashboard = () => {
         synthRef.current.cancel();
     };
 
+    const handleLogoutUser = (e) => {
+        if (e) e.preventDefault();
+        // Check if game exists before logout just to be safer, though logoutUser doesn't clear it.
+        // We want to ensure we navigate to /login-user, which requires 'game' to be present.
+        logoutUser();
+        navigate('/login-user');
+    };
+
     return (
         <div className="container" style={{ paddingBottom: '80px' }}>
             <Modal
@@ -310,8 +465,26 @@ const Dashboard = () => {
                     <div style={{ marginBottom: '20px' }}>
                         <h4 style={{ borderBottom: '1px solid gray', paddingBottom: '5px' }}>Usuarios ({familyUsers.length})</h4>
                         {familyUsers.map(u => (
-                            <div key={u._id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px', background: 'rgba(255,255,255,0.05)', marginBottom: '5px', borderRadius: '5px' }}>
-                                <span>{u.username} {u._id === user.id ? '(Tú)' : ''}</span>
+                            <div key={u._id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px', background: 'rgba(255,255,255,0.05)', marginBottom: '5px', borderRadius: '5px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <span>{u.username} {u._id === user.id ? '(Tú)' : ''}</span>
+                                    {u._id !== user.id && (
+                                        <div
+                                            onClick={() => handleTogglePlayPermission(u._id, !u.canPlay)}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: '5px',
+                                                cursor: 'pointer', background: 'rgba(0,0,0,0.3)', padding: '2px 8px', borderRadius: '10px'
+                                            }}
+                                            title={u.canPlay ? "Deshabilitar Juego" : "Habilitar Juego"}
+                                        >
+                                            <div style={{
+                                                width: '10px', height: '10px', borderRadius: '50%',
+                                                background: u.canPlay ? '#4ade80' : '#ef4444'
+                                            }} />
+                                            <span style={{ fontSize: '0.75rem', color: 'gray' }}>{u.canPlay ? 'Juego ON' : 'Juego OFF'}</span>
+                                        </div>
+                                    )}
+                                </div>
                                 {u._id !== user.id && (
                                     <button className="btn-danger" style={{ padding: '2px 8px', fontSize: '0.8rem' }} onClick={() => handleDeleteFamilyUser(u._id)}><FaTrash /></button>
                                 )}
@@ -355,8 +528,12 @@ const Dashboard = () => {
                         <button className="btn-secondary" style={{ borderColor: 'gold', color: 'gold' }} onClick={openFamilySettings} title="Ajustes de Familia"><FaCog /></button>
                     )}
                     <button className="btn-secondary" onClick={openChangePassword} title="Cambiar Contraseña"><FaKey /></button>
-                    <button className="btn-primary" onClick={() => navigate('/game')}><FaPlay /> Jugar</button>
-                    <button className="btn-secondary" onClick={() => logout()}><FaSignOutAlt /></button>
+                    {(user.role === 'family_admin' || user.canPlay) ? (
+                        <button className="btn-primary" onClick={() => navigate('/game')}><FaPlay /> Jugar</button>
+                    ) : (
+                        <button className="btn-secondary" style={{ opacity: 0.5, cursor: 'not-allowed' }} title="Espera a que el admin habilite el juego"><FaLock /> Jugar (Bloqueado)</button>
+                    )}
+                    <button className="btn-secondary" onClick={handleLogoutUser}><FaSignOutAlt /></button>
                 </div>
             </div>
 
@@ -419,8 +596,9 @@ const Dashboard = () => {
                 )}
 
                 {activeTab === 'new' && (
-                    <form onSubmit={handleCreateOrUpdateChallenge} style={{ display: 'flex', flexDirection: 'column', gap: '15px', maxWidth: '600px', margin: '0 auto' }}>
+                    <form onSubmit={handleCreateOrUpdateChallenge} style={{ display: 'flex', flexDirection: 'column', gap: '15px', maxWidth: '700px', margin: '0 auto' }}>
 
+                        {/* Header & Controls */}
                         <div style={{ borderBottom: '1px solid gray', paddingBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <h3 style={{ margin: 0 }}>{editingId ? 'Editar Prueba' : 'Crear Nueva Prueba'}</h3>
                             <div style={{ display: 'flex', gap: '5px' }}>
@@ -430,136 +608,404 @@ const Dashboard = () => {
                             </div>
                         </div>
 
-                        {/* Title */}
-                        <div className="form-group">
-                            <label style={{ display: 'block', marginBottom: '5px', color: 'var(--text-muted)' }}>Nombre de la Prueba</label>
-                            <div style={{ display: 'flex', gap: '5px' }}>
-                                <input className="glass-input" value={newChallenge.title} onChange={e => setNewChallenge({ ...newChallenge, title: e.target.value })} required />
-                                <button type="button" className="btn-secondary" onClick={() => previewSpeak(newChallenge.title, newChallenge.voiceConfig)}><FaPlay /></button>
-                            </div>
+                        {/* Tabs Navigation */}
+                        <div style={{ display: 'flex', gap: '5px', overflowX: 'auto', paddingBottom: '5px' }}>
+                            {['game:Juego', 'players:Jugadores', 'tools:Herramientas', 'rules:Reglas', 'customization:Voz'].map(t => {
+                                const [key, label] = t.split(':');
+                                return (
+                                    <button
+                                        type="button"
+                                        key={key}
+                                        className={`btn-secondary ${formTab === key ? 'active' : ''}`}
+                                        onClick={() => setFormTab(key)}
+                                        style={{
+                                            background: formTab === key ? 'var(--secondary)' : 'transparent',
+                                            color: formTab === key ? 'white' : 'var(--text-main)',
+                                            flex: 1,
+                                            fontSize: '0.9rem',
+                                            padding: '8px 5px'
+                                        }}
+                                    >
+                                        {label}
+                                    </button>
+                                );
+                            })}
                         </div>
 
-                        {/* Description/Text */}
-                        <div className="form-group">
-                            <label style={{ display: 'block', marginBottom: '5px', color: 'var(--text-muted)' }}>Descripción (Leída por el Robot)</label>
-                            <div style={{ display: 'flex', gap: '5px', alignItems: 'flex-start' }}>
-                                <textarea className="glass-input" rows="3" value={newChallenge.text} onChange={e => setNewChallenge({ ...newChallenge, text: e.target.value })} required />
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                                    <button type="button" className="btn-secondary" onClick={() => previewSpeak(newChallenge.text, newChallenge.voiceConfig)}><FaPlay /></button>
-                                    <button type="button" className="btn-danger" onClick={stopSpeak}><FaStop /></button>
+                        {/* TAB: JUEGO (GAME) */}
+                        {formTab === 'game' && (
+                            <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                                <div className="form-group">
+                                    <label style={{ display: 'block', marginBottom: '5px', color: 'var(--text-muted)' }}>Nombre de la Prueba</label>
+                                    <input className="glass-input" value={newChallenge.title} onChange={e => setNewChallenge({ ...newChallenge, title: e.target.value })} required autoFocus />
                                 </div>
-                            </div>
-                        </div>
 
-                        {/* Voice Selection */}
-                        <div className="form-group" style={{ background: 'rgba(255,255,255,0.05)', padding: '10px', borderRadius: '10px' }}>
-                            <label style={{ display: 'block', marginBottom: '5px', color: 'var(--secondary)', fontWeight: 'bold' }}>Personalización de Voz</label>
+                                <div className="form-group">
+                                    <label style={{ display: 'block', marginBottom: '5px', color: 'var(--text-muted)' }}>Descripción (Leída por el Robot)</label>
+                                    <div style={{ display: 'flex', gap: '5px', alignItems: 'flex-start' }}>
+                                        <textarea className="glass-input" rows="4" value={newChallenge.text} onChange={e => setNewChallenge({ ...newChallenge, text: e.target.value })} required />
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                            <button type="button" className="btn-secondary" onClick={() => previewSpeak(newChallenge.text, newChallenge.voiceConfig)}><FaPlay /></button>
+                                            <button type="button" className="btn-danger" onClick={stopSpeak}><FaStop /></button>
+                                        </div>
+                                    </div>
+                                </div>
 
-                            <div style={{ marginBottom: '10px' }}>
-                                <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Seleccionar Voz</label>
-                                <select
-                                    className="glass-input"
-                                    value={newChallenge.voiceConfig?.name || 'default'}
-                                    onChange={e => setNewChallenge({ ...newChallenge, voiceConfig: { ...newChallenge.voiceConfig, name: e.target.value } })}
-                                    style={{ color: 'white', backgroundColor: 'rgba(0,0,0,0.5)' }}
-                                >
-                                    <option value="default">Voz por Defecto (Español)</option>
-                                    {voices.filter(v => v.lang.startsWith('es')).map(v => (
-                                        <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            <div style={{ display: 'flex', gap: '15px' }}>
                                 <div style={{ flex: 1 }}>
-                                    <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                                        <span>Velocidad (Rate)</span>
-                                        <span>{newChallenge.voiceConfig?.rate || 1.0}</span>
-                                    </label>
-                                    <input
-                                        type="range" min="0.5" max="2.0" step="0.1"
-                                        value={newChallenge.voiceConfig?.rate || 1.0}
-                                        onChange={e => setNewChallenge({ ...newChallenge, voiceConfig: { ...newChallenge.voiceConfig, rate: parseFloat(e.target.value) } })}
-                                        style={{ width: '100%', accentColor: 'var(--secondary)' }}
-                                    />
-                                </div>
-                                <div style={{ flex: 1 }}>
-                                    <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                                        <span>Tono (Pitch)</span>
-                                        <span>{newChallenge.voiceConfig?.pitch || 1.0}</span>
-                                    </label>
-                                    <input
-                                        type="range" min="0.5" max="2.0" step="0.1"
-                                        value={newChallenge.voiceConfig?.pitch || 1.0}
-                                        onChange={e => setNewChallenge({ ...newChallenge, voiceConfig: { ...newChallenge.voiceConfig, pitch: parseFloat(e.target.value) } })}
-                                        style={{ width: '100%', accentColor: 'var(--secondary)' }}
-                                    />
-                                </div>
-                            </div>
-                        </div>
+                                    <label style={{ display: 'block', marginBottom: '5px', color: 'var(--text-muted)' }}>Duración</label>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', background: 'rgba(255,255,255,0.05)', padding: '15px', borderRadius: '8px' }}>
 
-                        {/* Time & Participants - Improved Layout */}
-                        <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-                            <div style={{ flex: 1, minWidth: '200px' }}>
-                                <label style={{ display: 'block', marginBottom: '5px', color: 'var(--text-muted)' }}>Tiempo (segs)</label>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                    {!newChallenge.isTimeUntilNext && (
-                                        <input
-                                            className="glass-input"
-                                            type="number"
-                                            value={newChallenge.timeLimit}
-                                            onChange={e => setNewChallenge({ ...newChallenge, timeLimit: e.target.value })}
-                                            style={{ textAlign: 'center' }}
-                                        />
-                                    )}
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap' }}>
-                                        <input type="checkbox" checked={newChallenge.isTimeUntilNext} onChange={e => setNewChallenge({ ...newChallenge, isTimeUntilNext: e.target.checked })} style={{ width: '20px', height: '20px', accentColor: 'var(--secondary)' }} />
-                                        <span>Indefinido</span>
+                                        {/* OPTION 1: FIXED TIME */}
+                                        <div
+                                            onClick={() => setNewChallenge({ ...newChallenge, durationType: 'fixed' })}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: '8px', padding: '10px', borderRadius: '8px',
+                                                background: newChallenge.durationType === 'fixed' ? 'rgba(236, 72, 153, 0.1)' : 'transparent',
+                                                border: `1px solid ${newChallenge.durationType === 'fixed' ? 'var(--secondary)' : 'rgba(255,255,255,0.1)'}`,
+                                                cursor: 'pointer', flex: 1, minWidth: '200px'
+                                            }}
+                                        >
+                                            <div style={{
+                                                width: '18px', height: '18px', borderRadius: '50%', border: '2px solid white',
+                                                background: newChallenge.durationType === 'fixed' ? 'white' : 'transparent',
+                                                display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                            }} />
+                                            <span style={{ fontSize: '0.9rem', color: newChallenge.durationType === 'fixed' ? 'white' : 'gray' }}>Tiempo Definido</span>
+                                            <input
+                                                className="glass-input"
+                                                type="number"
+                                                value={newChallenge.timeLimit}
+                                                onChange={e => setNewChallenge({ ...newChallenge, timeLimit: parseInt(e.target.value) || 0 })}
+                                                onClick={e => e.stopPropagation()}
+                                                style={{ textAlign: 'center', maxWidth: '70px', padding: '4px', opacity: newChallenge.durationType === 'fixed' ? 1 : 0.4 }}
+                                                disabled={newChallenge.durationType !== 'fixed'}
+                                            />
+                                            <span style={{ fontSize: '0.8rem', opacity: 0.6 }}>seg</span>
+                                        </div>
+
+                                        {/* OPTION 2: UNTIL NEXT */}
+                                        <div
+                                            onClick={() => setNewChallenge({ ...newChallenge, durationType: 'untilNext' })}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: '8px', padding: '10px', borderRadius: '8px',
+                                                background: newChallenge.durationType === 'untilNext' ? 'rgba(236, 72, 153, 0.1)' : 'transparent',
+                                                border: `1px solid ${newChallenge.durationType === 'untilNext' ? 'var(--secondary)' : 'rgba(255,255,255,0.1)'}`,
+                                                cursor: 'pointer', flex: 1, minWidth: '200px'
+                                            }}
+                                        >
+                                            <div style={{
+                                                width: '18px', height: '18px', borderRadius: '50%', border: '2px solid white',
+                                                background: newChallenge.durationType === 'untilNext' ? 'white' : 'transparent'
+                                            }} />
+                                            <span style={{ fontSize: '0.9rem', color: newChallenge.durationType === 'untilNext' ? 'white' : 'gray' }}>Hasta Siguiente Prueba</span>
+                                        </div>
+
+                                        {/* OPTION 3: DURING X TESTS */}
+                                        <div
+                                            onClick={() => setNewChallenge({ ...newChallenge, durationType: 'multiChallenge' })}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: '8px', padding: '10px', borderRadius: '8px',
+                                                background: newChallenge.durationType === 'multiChallenge' ? 'rgba(236, 72, 153, 0.1)' : 'transparent',
+                                                border: `1px solid ${newChallenge.durationType === 'multiChallenge' ? 'var(--secondary)' : 'rgba(255,255,255,0.1)'}`,
+                                                cursor: 'pointer', flex: 1, minWidth: '200px'
+                                            }}
+                                        >
+                                            <div style={{
+                                                width: '18px', height: '18px', borderRadius: '50%', border: '2px solid white',
+                                                background: newChallenge.durationType === 'multiChallenge' ? 'white' : 'transparent'
+                                            }} />
+                                            <span style={{ fontSize: '0.9rem', color: newChallenge.durationType === 'multiChallenge' ? 'white' : 'gray' }}>Durante</span>
+                                            <input
+                                                className="glass-input"
+                                                type="number"
+                                                value={newChallenge.durationLimit}
+                                                onChange={e => setNewChallenge({ ...newChallenge, durationLimit: parseInt(e.target.value) || 1 })}
+                                                onClick={e => e.stopPropagation()}
+                                                style={{ textAlign: 'center', maxWidth: '60px', padding: '4px', opacity: newChallenge.durationType === 'multiChallenge' ? 1 : 0.4 }}
+                                                disabled={newChallenge.durationType !== 'multiChallenge'}
+                                            />
+                                            <span style={{ fontSize: '0.9rem', color: newChallenge.durationType === 'multiChallenge' ? 'white' : 'gray' }}>pruebas</span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
+                        )}
 
-                            <div style={{ flex: 1, minWidth: '200px' }}>
-                                <label style={{ display: 'block', marginBottom: '5px', color: 'var(--text-muted)' }}>Participantes (num)</label>
-                                <input
-                                    className="glass-input"
-                                    type="number"
-                                    value={newChallenge.participants}
-                                    onChange={e => setNewChallenge({ ...newChallenge, participants: e.target.value })}
-                                    style={{ textAlign: 'center' }}
-                                />
+                        {/* TAB: JUGADORES (PLAYERS) */}
+                        {formTab === 'players' && (
+                            <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+
+                                <div className="glass-panel" style={{ padding: '15px', background: 'rgba(255,255,255,0.03)' }}>
+                                    <label style={{ display: 'block', marginBottom: '10px', color: 'var(--secondary)', fontWeight: 'bold' }}>¿Quiénes juegan?</label>
+
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px', marginBottom: '20px' }}>
+                                        {['all:Todos', 'odd:Los Impares', 'even:Los Pares', 'random:Aleatorio', 'custom:Personalizado', 'forward:Posición Relativa'].map(opt => {
+                                            const [val, label] = opt.split(':');
+                                            return (
+                                                <div key={val}
+                                                    onClick={() => setNewChallenge({ ...newChallenge, playerConfig: { ...newChallenge.playerConfig, targetType: val } })}
+                                                    style={{
+                                                        padding: '12px',
+                                                        background: newChallenge.playerConfig.targetType === val ? 'var(--secondary)' : 'rgba(0,0,0,0.3)',
+                                                        borderRadius: '8px',
+                                                        cursor: 'pointer',
+                                                        textAlign: 'center',
+                                                        fontSize: '0.9rem',
+                                                        transition: '0.2s',
+                                                        border: `1px solid ${newChallenge.playerConfig.targetType === val ? 'white' : 'transparent'}`
+                                                    }}
+                                                >
+                                                    {label}
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+
+                                    <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                                        {/* Conditional participants/offset block */}
+                                        {(newChallenge.playerConfig.targetType === 'random' || newChallenge.playerConfig.targetType === 'custom') && (
+                                            <div style={{ flex: '1 1 200px' }} className="animate-fade-in">
+                                                <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Número de Participantes</label>
+                                                <input
+                                                    className="glass-input"
+                                                    type="number"
+                                                    value={newChallenge.participants}
+                                                    onChange={e => setNewChallenge({ ...newChallenge, participants: parseInt(e.target.value) || 1 })}
+                                                    style={{ width: '100%' }}
+                                                />
+                                            </div>
+                                        )}
+
+                                        {newChallenge.playerConfig.targetType === 'forward' && (
+                                            <div style={{ flex: '1 1 200px' }} className="animate-fade-in">
+                                                <label style={{ display: 'block', marginBottom: '5px', color: 'var(--text-muted)', fontSize: '0.85rem' }}>Avanzar posiciones</label>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                    <input
+                                                        className="glass-input" type="number" placeholder="1" style={{ width: '80px' }}
+                                                        value={newChallenge.playerConfig.positionOffset || 1}
+                                                        onChange={e => setNewChallenge({ ...newChallenge, playerConfig: { ...newChallenge.playerConfig, positionOffset: parseInt(e.target.value) || 0 } })}
+                                                    />
+                                                    <span style={{ fontSize: '0.8rem', color: 'gray' }}>puestos (desde ti)</span>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Always Visible Components integrated here */}
+                                        <div style={{ flex: '1 1 200px' }}>
+                                            <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Edad / Características</label>
+                                            <select className="glass-input" value={newChallenge.playerConfig.ageRange} onChange={e => setNewChallenge({ ...newChallenge, playerConfig: { ...newChallenge.playerConfig, ageRange: e.target.value } })} style={{ width: '100%' }}>
+                                                <option value="all">Cualquiera</option>
+                                                <option value="adults">Solo Adultos</option>
+                                                <option value="kids">Solo Niños</option>
+                                                <option value="teens">Adolescentes</option>
+                                            </select>
+                                        </div>
+
+                                        {newChallenge.participants > 1 && (
+                                            <div style={{ flex: '1 1 200px' }} className="animate-fade-in">
+                                                <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Agrupación</label>
+                                                <select className="glass-input" value={newChallenge.playerConfig.grouping} onChange={e => setNewChallenge({ ...newChallenge, playerConfig: { ...newChallenge.playerConfig, grouping: e.target.value } })} style={{ width: '100%' }}>
+                                                    <option value="individual">Individual</option>
+                                                    <option value="pairs">Por Parejas</option>
+                                                    <option value="trios">Por Tríos</option>
+                                                </select>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {newChallenge.playerConfig.targetType === 'custom' && (
+                                        <div className="animate-fade-in" style={{ marginTop: '15px' }}>
+                                            <label style={{ display: 'block', marginBottom: '5px', color: 'var(--text-muted)' }}>Detalles Personalizados</label>
+                                            <textarea
+                                                className="glass-input"
+                                                rows="2"
+                                                placeholder="Escribe aquí reglas o detalles específicos..."
+                                                value={newChallenge.playerConfig.customText}
+                                                onChange={e => setNewChallenge({ ...newChallenge, playerConfig: { ...newChallenge.playerConfig, customText: e.target.value } })}
+                                            />
+                                        </div>
+                                    )}
+                                </div>
                             </div>
-                        </div>
+                        )}
 
-                        {/* Objects */}
-                        <div className="form-group">
-                            <label style={{ display: 'block', marginBottom: '5px', color: 'var(--text-muted)' }}>Objetos Necesarios</label>
-                            <input className="glass-input" value={newChallenge.objects} onChange={e => setNewChallenge({ ...newChallenge, objects: e.target.value })} />
-                        </div>
+                        {/* TAB: HERRAMIENTAS (TOOLS) */}
+                        {formTab === 'tools' && (
+                            <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                                <div className="form-group">
+                                    <label style={{ display: 'block', marginBottom: '5px', color: 'var(--text-muted)' }}>Objetos Necesarios</label>
+                                    <input className="glass-input" value={newChallenge.objects} onChange={e => setNewChallenge({ ...newChallenge, objects: e.target.value })} placeholder="Ej: Una pelota, una cuchara..." />
+                                </div>
 
-                        {/* Rules */}
-                        <div className="form-group">
-                            <label style={{ display: 'block', marginBottom: '5px', color: 'var(--text-muted)' }}>Reglas / Instrucciones Adicionales</label>
-                            <textarea className="glass-input" rows="2" value={newChallenge.rules} onChange={e => setNewChallenge({ ...newChallenge, rules: e.target.value })} />
-                        </div>
+                                <div className="form-group" style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '15px' }}>
+                                    <label style={{ display: 'block', marginBottom: '10px', color: 'var(--secondary)', fontWeight: 'bold' }}>Multimedia (Opcional)</label>
+                                    <p style={{ fontSize: '0.8rem', color: 'gray', marginTop: '-5px', marginBottom: '15px' }}>Sube archivos para mostrar durante la prueba. El nuevo reemplaza al anterior.</p>
 
-                        <div style={{ display: 'flex', gap: '10px' }}>
-                            <button type="submit" className="btn-primary" style={{ flex: 1 }}>{editingId ? 'Actualizar' : 'Guardar'} Prueba</button>
-                            {editingId && <button type="button" className="btn-secondary" onClick={() => { resetForm(); setActiveTab('challenges'); }}>Cancelar</button>}
+                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
+                                        {/* Image Upload */}
+                                        <div style={{ background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '8px' }}>
+                                            <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.9rem' }}>🖼 Imagen (Máx 8MB)</label>
+                                            <input type="file" className="glass-input" onChange={e => handleMediaUpload(e, 'image')} accept="image/*" style={{ fontSize: '0.8rem' }} title="Subir imagen" />
+                                            {newChallenge.multimedia?.image?.url ? (
+                                                <div style={{ marginTop: '5px', fontSize: '0.8rem', color: '#4ade80' }}>✓ {newChallenge.multimedia.image.filename}</div>
+                                            ) : <div style={{ marginTop: '5px', fontSize: '0.8rem', color: 'gray' }}>Sin archivo</div>}
+                                        </div>
+
+                                        {/* Audio Upload */}
+                                        <div style={{ background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '8px' }}>
+                                            <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.9rem' }}>🎵 Audio (Máx 15MB)</label>
+                                            <input type="file" className="glass-input" onChange={e => handleMediaUpload(e, 'audio')} accept="audio/*" style={{ fontSize: '0.8rem' }} title="Subir audio" />
+                                            {newChallenge.multimedia?.audio?.url ? (
+                                                <div style={{ marginTop: '5px', fontSize: '0.8rem', color: '#4ade80' }}>✓ {newChallenge.multimedia.audio.filename}</div>
+                                            ) : <div style={{ marginTop: '5px', fontSize: '0.8rem', color: 'gray' }}>Sin archivo</div>}
+                                        </div>
+
+                                        {/* Video Upload */}
+                                        <div style={{ background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '8px' }}>
+                                            <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.9rem' }}>🎬 Video (Máx 50MB)</label>
+                                            <input type="file" className="glass-input" onChange={e => handleMediaUpload(e, 'video')} accept="video/*" style={{ fontSize: '0.8rem' }} title="Subir video" />
+                                            {newChallenge.multimedia?.video?.url ? (
+                                                <div style={{ marginTop: '5px', fontSize: '0.8rem', color: '#4ade80' }}>✓ {newChallenge.multimedia.video.filename}</div>
+                                            ) : <div style={{ marginTop: '5px', fontSize: '0.8rem', color: 'gray' }}>Sin archivo</div>}
+                                        </div>
+
+                                        {/* Document Upload (NEW) */}
+                                        <div style={{ background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '8px' }}>
+                                            <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.9rem' }}>📄 Documento (PDF, etc)</label>
+                                            <input type="file" className="glass-input" onChange={e => handleMediaUpload(e, 'document')} accept=".pdf,.txt,.doc,.docx" style={{ fontSize: '0.8rem' }} title="Subir documento" />
+                                            {newChallenge.multimedia?.document?.url ? (
+                                                <div style={{ marginTop: '5px', fontSize: '0.8rem', color: '#4ade80' }}>✓ {newChallenge.multimedia.document.filename}</div>
+                                            ) : <div style={{ marginTop: '5px', fontSize: '0.8rem', color: 'gray' }}>Sin archivo</div>}
+                                        </div>
+                                    </div>
+
+                                    {uploadingMedia && <p className="animate-pulse" style={{ marginTop: '15px', textAlign: 'center', color: 'var(--secondary)' }}>⏳ Subiendo archivo...</p>}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* TAB: REGLAS (RULES) */}
+                        {formTab === 'rules' && (
+                            <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                                <div className="form-group">
+                                    <label style={{ display: 'block', marginBottom: '5px', color: 'var(--text-muted)' }}>Reglas / Instrucciones Adicionales</label>
+                                    <div style={{ display: 'flex', gap: '5px', alignItems: 'flex-start' }}>
+                                        <textarea className="glass-input" rows="4" value={newChallenge.rules} onChange={e => setNewChallenge({ ...newChallenge, rules: e.target.value })} placeholder="Detalles extra que debe leer el sistema..." />
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                            <button type="button" className="btn-secondary" onClick={() => previewSpeak(`Reglas: ${newChallenge.rules}`, newChallenge.voiceConfig)}><FaPlay /></button>
+                                            <button type="button" className="btn-danger" onClick={stopSpeak}><FaStop /></button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="form-group">
+                                    <label style={{ display: 'block', marginBottom: '5px', color: '#ef4444' }}>Castigo (Para el perdedor)</label>
+                                    <div style={{ display: 'flex', gap: '5px', alignItems: 'flex-start' }}>
+                                        <textarea className="glass-input" rows="4" value={newChallenge.punishment} onChange={e => setNewChallenge({ ...newChallenge, punishment: e.target.value })} style={{ borderColor: 'rgba(239,68,68,0.3)' }} placeholder="¿Qué pasa si pierden?" />
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                            <button type="button" className="btn-secondary" onClick={() => previewSpeak(`Castigo: ${newChallenge.punishment}`, newChallenge.voiceConfig)}><FaPlay /></button>
+                                            <button type="button" className="btn-danger" onClick={stopSpeak}><FaStop /></button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* TAB: PERSONALIZACIÓN (CUSTOMIZATION - VOZ) */}
+                        {formTab === 'customization' && (
+                            <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                                <div className="form-group" style={{ background: 'rgba(255,255,255,0.05)', padding: '15px', borderRadius: '10px' }}>
+                                    <label style={{ display: 'block', marginBottom: '15px', color: 'var(--secondary)', fontWeight: 'bold' }}>Configuración de Voz (TTS)</label>
+
+                                    <div style={{ marginBottom: '15px' }}>
+                                        <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Seleccionar Voz</label>
+                                        <select
+                                            className="glass-input"
+                                            value={newChallenge.voiceConfig?.name || 'default'}
+                                            onChange={e => setNewChallenge({ ...newChallenge, voiceConfig: { ...newChallenge.voiceConfig, name: e.target.value } })}
+                                            style={{ marginTop: '5px' }}
+                                        >
+                                            <option value="default">Voz por Defecto (Español)</option>
+                                            {voices.filter(v => v.lang.startsWith('es')).map(v => (
+                                                <option key={v.name} value={v.name}>{v.name} ({v.lang})</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div style={{ display: 'flex', gap: '20px' }}>
+                                        <div style={{ flex: 1 }}>
+                                            <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                                <span>Velocidad</span>
+                                                <span>{newChallenge.voiceConfig?.rate || 1.0}x</span>
+                                            </label>
+                                            <input
+                                                type="range" min="0.5" max="2.0" step="0.1"
+                                                value={newChallenge.voiceConfig?.rate || 1.0}
+                                                onChange={e => setNewChallenge({ ...newChallenge, voiceConfig: { ...newChallenge.voiceConfig, rate: parseFloat(e.target.value) } })}
+                                                style={{ width: '100%', accentColor: 'var(--secondary)', marginTop: '5px' }}
+                                            />
+                                        </div>
+                                        <div style={{ flex: 1 }}>
+                                            <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                                <span>Tono</span>
+                                                <span>{newChallenge.voiceConfig?.pitch || 1.0}</span>
+                                            </label>
+                                            <input
+                                                type="range" min="0.5" max="2.0" step="0.1"
+                                                value={newChallenge.voiceConfig?.pitch || 1.0}
+                                                onChange={e => setNewChallenge({ ...newChallenge, voiceConfig: { ...newChallenge.voiceConfig, pitch: parseFloat(e.target.value) } })}
+                                                style={{ width: '100%', accentColor: 'var(--secondary)', marginTop: '5px' }}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'center' }}>
+                                        <button type="button" className="btn-secondary" onClick={() => previewSpeak("Hola, esta es una prueba de voz.", newChallenge.voiceConfig)}>
+                                            <FaPlay /> Probar esta voz
+                                        </button>
+                                        <button type="button" className="btn-danger" onClick={stopSpeak} style={{ marginLeft: '10px' }}><FaStop /></button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Footer Actions */}
+                        <div style={{ display: 'flex', gap: '10px', marginTop: '10px', borderTop: '1px solid gray', paddingTop: '15px' }}>
+                            <button type="submit" className="btn-primary" style={{ flex: 1, padding: '12px', fontSize: '1.1rem' }}>
+                                {editingId ? <><FaEdit /> Actualizar Prueba</> : <><FaPlus /> Guardar Prueba</>}
+                            </button>
+                            {editingId && (
+                                <button type="button" className="btn-secondary" onClick={() => { resetForm(); setActiveTab('challenges'); }}>
+                                    Cancelar
+                                </button>
+                            )}
                         </div>
                     </form>
                 )}
 
                 {activeTab === 'music' && (
                     <div>
-                        <form onSubmit={handleUploadAudio} style={{ marginBottom: '20px', display: 'flex', gap: '10px' }}>
+                        <form onSubmit={handleUploadAudio} style={{ marginBottom: '20px', display: 'flex', gap: '10px', alignItems: 'center' }}>
                             <input type="file" className="glass-input" accept="audio/*" onChange={e => setAudioFile(e.target.files[0])} />
+
+                            <div style={{ display: 'flex', flexDirection: 'column', minWidth: '150px' }}>
+                                <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Duración: {audioDuration}s</label>
+                                <input
+                                    type="range" min="5" max="30" step="1"
+                                    value={audioDuration}
+                                    onChange={e => setAudioDuration(parseInt(e.target.value))}
+                                    style={{ width: '100%' }}
+                                />
+                            </div>
+
                             <button type="submit" className="btn-primary" disabled={!audioFile}>Subir</button>
+                            <span style={{ fontSize: '0.8rem', color: 'orange' }}>(Máx 15MB)</span>
                         </form>
                         <div className="grid-auto">
                             {audios.map(a => (
                                 <div key={a._id} className="glass-panel" style={{ padding: '15px', background: 'rgba(255,255,255,0.05)' }}>
-                                    <p style={{ marginBottom: '10px', wordBreak: 'break-all' }}>{a.originalName}</p>
+                                    <p style={{ marginBottom: '5px', wordBreak: 'break-all', fontWeight: 'bold' }}>{a.originalName}</p>
+                                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '10px' }}>Duración: {a.duration || 30}s</p>
                                     <audio controls style={{ width: '100%' }}>
                                         <source src={`/uploads/${a.filename}`} type="audio/mpeg" />
                                     </audio>
