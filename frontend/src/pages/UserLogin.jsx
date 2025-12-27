@@ -52,25 +52,25 @@ const UserLogin = () => {
 
     return (
         <div className="full-screen-center" style={{ background: 'linear-gradient(135deg, #1e1e2f 0%, #2a2a40 100%)' }}>
-            <div className="glass-panel text-center animate-fade-in" style={{ padding: '3rem', maxWidth: '400px', width: '100%', border: '1px solid rgba(236, 72, 153, 0.5)' }}>
-                <button onClick={logoutGame} style={{ position: 'absolute', top: '10px', right: '10px', background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '0.8rem' }}>
-                    <FaSignOutAlt /> Salir del Juego
+            <div className="glass-panel text-center animate-fade-in" style={{ padding: '2rem 1.5rem', maxWidth: '400px', width: '100%', border: '1px solid rgba(236, 72, 153, 0.5)', position: 'relative' }}>
+                <button onClick={logoutGame} style={{ position: 'absolute', top: '10px', right: '10px', background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '1.2rem' }} title="Salir del Juego">
+                    <FaSignOutAlt />
                 </button>
-                <h2 style={{ marginBottom: '1rem' }}>Hola, familia {game?.name}</h2>
-                <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>Identifícate para participar</p>
+                <h2 style={{ marginBottom: '0.5rem', fontSize: '1.5rem' }}>Familia {game?.name}</h2>
+                <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontSize: '0.9rem' }}>Identifícate para participar</p>
 
-                <div style={{ marginBottom: '2rem' }}>
+                <div style={{ marginBottom: '2rem', display: 'flex', gap: '10px' }}>
                     <button
                         className={`btn-secondary ${isLogin ? 'active' : ''}`}
                         onClick={() => setIsLogin(true)}
-                        style={{ marginRight: '10px', background: isLogin ? 'rgba(236, 72, 153, 0.2)' : 'transparent' }}
+                        style={{ flex: 1, background: isLogin ? 'rgba(236, 72, 153, 0.2)' : 'transparent', fontSize: '0.9rem' }}
                     >
                         Soy Yo
                     </button>
                     <button
                         className={`btn-secondary ${!isLogin ? 'active' : ''}`}
                         onClick={() => setIsLogin(false)}
-                        style={{ background: !isLogin ? 'rgba(236, 72, 153, 0.2)' : 'transparent' }}
+                        style={{ flex: 1, background: !isLogin ? 'rgba(236, 72, 153, 0.2)' : 'transparent', fontSize: '0.9rem' }}
                     >
                         Soy Nuevo
                     </button>

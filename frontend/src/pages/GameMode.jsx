@@ -47,6 +47,13 @@ const GameMode = () => {
     const wakeLockRef = useRef(null);
     const announceTimeoutRef = useRef(null); // New ref to handle the 1s delay timeout
 
+    // Random Generator State
+    const [usedRandomNumbers, setUsedRandomNumbers] = useState([]);
+    const [generatedNumbers, setGeneratedNumbers] = useState([]);
+    const [randomMax, setRandomMax] = useState(10);
+    const [pendingRandomData, setPendingRandomData] = useState(null);
+
+
     useEffect(() => {
         // Wake Lock
         const requestWakeLock = async () => {
@@ -59,6 +66,8 @@ const GameMode = () => {
         requestWakeLock();
 
         fetchManualUsers();
+        fetchUsedRandomNumbers();
+
 
         return () => {
             if (wakeLockRef.current) wakeLockRef.current.release();
@@ -198,12 +207,55 @@ const GameMode = () => {
         }
     };
 
+    const fetchUsedRandomNumbers = async () => {
+        try {
+            const res = await axios.get('/api/game/used-random-numbers');
+            setUsedRandomNumbers(res.data.usedRandomNumbers);
+        } catch (err) { console.error(err); }
+    };
+
+    const generateRandomNumbers = () => {
+        const needed = currentData.challenge.participants || 1;
+        const max = randomMax;
+
+        // Calculate available in [1..max]
+        const allInMax = Array.from({ length: max }, (_, i) => i + 1);
+        let available = allInMax.filter(n => !usedRandomNumbers.includes(n));
+
+        let resetRangeMax = null;
+
+        // If not enough, reset pool logic
+        if (available.length < needed) {
+            available = allInMax;
+            resetRangeMax = max;
+        }
+
+        // Pick randoms
+        const picked = [];
+        let currentPool = [...available];
+
+        for (let i = 0; i < needed; i++) {
+            if (currentPool.length === 0) break;
+            const idx = Math.floor(Math.random() * currentPool.length);
+            picked.push(currentPool[idx]);
+            currentPool.splice(idx, 1);
+        }
+
+        setGeneratedNumbers(picked);
+        setPendingRandomData({ numbers: picked, resetRangeMax });
+    };
+
     // Common Flow Start
     const startChallengeFlow = (data) => {
         setCurrentData(data);
 
         // Play Music
         setStatus('VICTIM_MUSIC');
+        // Reset Random State
+        setGeneratedNumbers([]);
+        setPendingRandomData(null);
+        setRandomMax(manualUsers.length > 0 ? manualUsers.length : 10);
+
         // Max 30s for hymn, or use defined duration
         const duration = Math.min((data.music && data.music.duration) ? data.music.duration : 30, 30);
         setMusicTimer(duration);
@@ -343,8 +395,24 @@ const GameMode = () => {
     const resumeInstructions = () => window.speechSynthesis.resume();
 
     // 4. Play
-    const playChallenge = () => {
+    const playChallenge = async () => {
         superStopAllAudio(); // Stop audio on play
+
+        // Commit Random Numbers if generated
+        if (pendingRandomData) {
+            try {
+                await axios.post('/api/game/record-random-numbers', pendingRandomData);
+                // Optimistically update used (though we might fetch later)
+                // If reset happened, we clear lower numbers first
+                let newUsed = [...usedRandomNumbers];
+                if (pendingRandomData.resetRangeMax) {
+                    newUsed = newUsed.filter(n => n > pendingRandomData.resetRangeMax);
+                }
+                newUsed = [...newUsed, ...pendingRandomData.numbers];
+                setUsedRandomNumbers(newUsed);
+                setPendingRandomData(null); // Clear pending
+            } catch (err) { console.error("Error saving randoms", err); }
+        }
 
         const challenge = currentData.challenge;
 
@@ -374,6 +442,7 @@ const GameMode = () => {
 
     const skipChallenge = () => {
         superStopAllAudio(); // Stop audio on skip
+        setPendingRandomData(null); // Discard randoms
         startNextGameCycle();
     };
 
@@ -457,7 +526,7 @@ const GameMode = () => {
                                 </div>
                             </div>
 
-                            <button className="btn-primary" style={{ fontSize: '2rem', padding: '20px 60px' }} onClick={startNextGameCycle}>
+                            <button className="btn-primary btn-xl" onClick={startNextGameCycle}>
                                 <FaPlay /> CONTINUAR
                             </button>
                         </div>
@@ -467,7 +536,7 @@ const GameMode = () => {
                     {status === 'COUNTDOWN' && (
                         <div>
                             <h2>Próximo Reto en...</h2>
-                            <div style={{ fontSize: '8rem', fontWeight: 'bold', color: '#06b6d4', margin: '40px 0' }}>{countdown}</div>
+                            <div className="countdown-text">{countdown}</div>
                             <p className="animate-pulse">Esperando...</p>
                         </div>
                     )}
@@ -529,7 +598,7 @@ const GameMode = () => {
 
                             <button
                                 className="btn-primary"
-                                style={{ marginTop: '30px', padding: '15px 40px' }}
+                                style={{ marginTop: '30px', padding: '15px 40px', width: 'auto' }}
                                 onClick={() => announceChallenge(currentData)}
                             >
                                 <FaForward /> LEER PRUEBA
@@ -539,12 +608,12 @@ const GameMode = () => {
 
                     {(status === 'ANNOUNCING' || status === 'READY_TO_PLAY') && (
                         <div className="animate-fade-in">
-                            <h5 style={{ color: 'var(--text-muted)' }}>Jugador que Propone:</h5>
-                            <h2 style={{ color: 'var(--secondary)', marginBottom: '20px' }}>{currentData?.victim?.username}</h2>
+                            <h5 style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Jugador que Propone:</h5>
+                            <h2 style={{ color: 'var(--secondary)', marginBottom: '15px', fontSize: '1.4rem' }}>{currentData?.victim?.username}</h2>
 
-                            <div style={{ border: '1px solid rgba(255,255,255,0.2)', padding: '20px', borderRadius: '10px', background: 'rgba(0,0,0,0.2)' }}>
-                                <h1 style={{ marginBottom: '10px' }}>{currentData?.challenge?.title}</h1>
-                                <p style={{ fontSize: '1.4rem', marginBottom: '20px', minHeight: '80px' }}>{currentData?.challenge?.text}</p>
+                            <div style={{ border: '1px solid rgba(255,255,255,0.2)', padding: '15px', borderRadius: '10px', background: 'rgba(0,0,0,0.2)' }}>
+                                <h1 style={{ marginBottom: '10px', fontSize: '1.5rem' }}>{currentData?.challenge?.title}</h1>
+                                <p style={{ fontSize: '1.1rem', marginBottom: '15px', minHeight: '60px' }}>{currentData?.challenge?.text}</p>
 
                                 {/* MULTIMEDIA DISPLAY */}
                                 {currentData?.challenge?.multimedia && currentData.challenge.multimedia.type !== 'none' && (
@@ -567,6 +636,23 @@ const GameMode = () => {
                                     </div>
                                 )}
 
+                                {/* RANDOM NUMBER GENERATOR */}
+                                {currentData?.challenge?.playerConfig?.targetType === 'random' && (
+                                    <div style={{ margin: '20px 0', padding: '15px', background: 'rgba(255,255,255,0.1)', borderRadius: '10px' }}>
+                                        <h3 style={{ marginBottom: '10px' }}>🎲 Generar Números Aleatorios</h3>
+                                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', justifyContent: 'center', marginBottom: '10px' }}>
+                                            <label>Máximo:</label>
+                                            <input type="number" className="glass-input" value={randomMax} onChange={(e) => setRandomMax(parseInt(e.target.value))} style={{ width: '80px', textAlign: 'center' }} />
+                                            <button className="btn-secondary" onClick={generateRandomNumbers}>GENERAR</button>
+                                        </div>
+                                        {generatedNumbers.length > 0 && (
+                                            <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: '#fbbf24', letterSpacing: '2px' }}>
+                                                {generatedNumbers.join(' - ')}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
                                 <div style={{ textAlign: 'left', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '15px', fontSize: '0.95rem', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '15px' }}>
                                     <div><strong>👥 Participantes:</strong> {currentData?.challenge?.participants}</div>
                                     <div><strong>⏱ Tiempo:</strong> {
@@ -582,11 +668,11 @@ const GameMode = () => {
                                 </div>
                             </div>
 
-                            <div style={{ marginTop: '30px', display: 'flex', justifyContent: 'center', gap: '20px', alignItems: 'center' }}>
-                                <button className="btn-secondary" style={{ fontSize: '1rem', padding: '10px 20px' }} onClick={skipChallenge}>
-                                    <FaForward /> Saltar Prueba
+                            <div style={{ marginTop: '25px', display: 'flex', justifyContent: 'center', gap: '15px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                <button className="btn-secondary" style={{ flex: 1, minWidth: '140px' }} onClick={skipChallenge}>
+                                    <FaForward /> Saltar
                                 </button>
-                                <button className="btn-primary" style={{ fontSize: '2rem', padding: '15px 50px' }} onClick={playChallenge} disabled={status === 'ANNOUNCING'}>
+                                <button className="btn-primary btn-xl" style={{ flex: 2, minWidth: '200px' }} onClick={playChallenge} disabled={status === 'ANNOUNCING'}>
                                     <FaPlay /> JUGAR
                                 </button>
                             </div>
@@ -596,10 +682,10 @@ const GameMode = () => {
                     {status === 'PLAYING_CHALLENGE' && (
                         <div>
                             <h2 style={{ color: '#ec4899' }}>¡EN CURSO!</h2>
-                            <div style={{ fontSize: '8rem', fontWeight: 'bold', fontFamily: 'monospace', margin: '40px 0' }}>
+                            <div className="countdown-text" style={{ fontFamily: 'monospace' }}>
                                 {countdown}
                             </div>
-                            <p>{currentData?.challenge?.title}</p>
+                            <p style={{ fontSize: '1.2rem' }}>{currentData?.challenge?.title}</p>
                             {countdown === '∞' && (
                                 <button className="btn-primary" onClick={finishChallenge}>TERMINAR</button>
                             )}
@@ -608,8 +694,8 @@ const GameMode = () => {
 
                     {status === 'FINISHED' && (
                         <div className="animate-fade-in">
-                            <h1 style={{ fontSize: '4rem', color: '#ec4899', marginBottom: '40px' }}>¡Tiempo Terminado!</h1>
-                            <button className="btn-primary" style={{ fontSize: '2rem', padding: '20px 60px' }} onClick={startNextGameCycle}>
+                            <h1 style={{ fontSize: '2.5rem', color: '#ec4899', marginBottom: '30px' }}>¡Tiempo Terminado!</h1>
+                            <button className="btn-primary btn-xl" onClick={startNextGameCycle}>
                                 <FaForward /> CONTINUAR
                             </button>
                         </div>

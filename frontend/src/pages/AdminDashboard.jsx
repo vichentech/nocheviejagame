@@ -289,15 +289,21 @@ const AdminDashboard = () => {
                 {modal.children}
             </Modal>
 
-            <div className="glass-panel" style={{ marginTop: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h2>🔧 Admin Panel</h2>
-                <button className="btn-secondary" onClick={() => { logoutGame(); navigate('/'); }}><FaSignOutAlt /> Salir</button>
+            <div className="glass-panel" style={{ marginTop: '20px', padding: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                <h2 style={{ fontSize: '1.4rem' }}>🔧 Admin Panel</h2>
+                <button className="btn-secondary" onClick={() => { logoutGame(); navigate('/'); }} style={{ width: 'auto' }}><FaSignOutAlt /> Salir</button>
             </div>
 
-            <div style={{ marginTop: '20px', display: 'flex', gap: '10px' }}>
-                <button className={`btn-secondary ${activeTab === 'games' ? 'active' : ''}`} onClick={() => setActiveTab('games')} style={{ background: activeTab === 'games' ? 'var(--secondary)' : 'transparent' }}>Juegos</button>
-                <button className={`btn-secondary ${activeTab === 'users' ? 'active' : ''}`} onClick={() => setActiveTab('users')} style={{ background: activeTab === 'users' ? 'var(--secondary)' : 'transparent' }}>Usuarios</button>
-                <button className={`btn-secondary ${activeTab === 'challenges' ? 'active' : ''}`} onClick={() => setActiveTab('challenges')} style={{ background: activeTab === 'challenges' ? 'var(--secondary)' : 'transparent' }}>Pruebas</button>
+            <div style={{ marginTop: '20px', display: 'flex', gap: '8px' }}>
+                <button className={`btn-secondary ${activeTab === 'games' ? 'active' : ''}`} onClick={() => setActiveTab('games')} style={{ flex: 1, background: activeTab === 'games' ? 'var(--secondary)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '12px 5px' }}>
+                    <FaGamepad /> <span className="hide-mobile">Juegos</span>
+                </button>
+                <button className={`btn-secondary ${activeTab === 'users' ? 'active' : ''}`} onClick={() => setActiveTab('users')} style={{ flex: 1, background: activeTab === 'users' ? 'var(--secondary)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '12px 5px' }}>
+                    <FaUser /> <span className="hide-mobile">Usuarios</span>
+                </button>
+                <button className={`btn-secondary ${activeTab === 'challenges' ? 'active' : ''}`} onClick={() => setActiveTab('challenges')} style={{ flex: 1, background: activeTab === 'challenges' ? 'var(--secondary)' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '12px 5px' }}>
+                    <FaList /> <span className="hide-mobile">Pruebas</span>
+                </button>
             </div>
 
             <div className="glass-panel animate-fade-in" style={{ marginTop: '20px', padding: '20px', minHeight: '50vh' }}>

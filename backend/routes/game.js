@@ -169,4 +169,44 @@ router.get('/random', auth, async (req, res) => {
     }
 });
 
+// @route   GET api/game/used-random-numbers
+// @desc    Get used random numbers
+// @access  Private
+router.get('/used-random-numbers', auth, async (req, res) => {
+    try {
+        const game = await Game.findById(req.user.gameId);
+        res.json({ usedRandomNumbers: game.usedRandomNumbers || [] });
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).send('Server error');
+    }
+});
+
+// @route   POST api/game/record-random-numbers
+// @desc    Record generated random numbers as used
+// @access  Private
+router.post('/record-random-numbers', auth, async (req, res) => {
+    try {
+        const { numbers, resetRangeMax } = req.body;
+        const game = await Game.findById(req.user.gameId);
+
+        if (!game.usedRandomNumbers) game.usedRandomNumbers = [];
+
+        // If resetRangeMax is provided, we clear numbers <= resetRangeMax before adding new ones
+        if (resetRangeMax) {
+            game.usedRandomNumbers = game.usedRandomNumbers.filter(n => n > resetRangeMax);
+        }
+
+        // Add unique numbers
+        const newNumbers = numbers.filter(n => !game.usedRandomNumbers.includes(n));
+        game.usedRandomNumbers = [...game.usedRandomNumbers, ...newNumbers];
+
+        await game.save();
+        res.json({ usedRandomNumbers: game.usedRandomNumbers });
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).send('Server error');
+    }
+});
+
 module.exports = router;

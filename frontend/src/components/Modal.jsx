@@ -10,7 +10,7 @@ const Modal = ({ isOpen, onClose, title, message, type = 'alert', onConfirm, chi
             backgroundColor: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(5px)',
             display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000
         }}>
-            <div className="glass-panel animate-fade-in" style={{ padding: '2rem', maxWidth: '400px', width: '90%', position: 'relative' }}>
+            <div className="glass-panel animate-fade-in" style={{ padding: '1.5rem', maxWidth: '450px', width: '95%', maxHeight: '90vh', overflowY: 'auto', position: 'relative' }}>
                 <button
                     onClick={onClose}
                     style={{ position: 'absolute', top: '10px', right: '10px', background: 'transparent', border: 'none', color: 'white', cursor: 'pointer' }}
@@ -26,7 +26,7 @@ const Modal = ({ isOpen, onClose, title, message, type = 'alert', onConfirm, chi
                 )}
 
                 {!children && (
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                    <div className="flex-row-mobile-column" style={{ justifyContent: 'flex-end', gap: '10px' }}>
                         {type === 'confirm' && (
                             <button className="btn-secondary" onClick={onClose}>Cancelar</button>
                         )}

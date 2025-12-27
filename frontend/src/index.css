@@ -1,7 +1,10 @@
 :root {
-  --primary: #6d28d9; /* Deep Purple */
-  --secondary: #ec4899; /* Pink Neon */
-  --accent: #06b6d4; /* Cyan */
+  --primary: #6d28d9;
+  /* Deep Purple */
+  --secondary: #ec4899;
+  /* Pink Neon */
+  --accent: #06b6d4;
+  /* Cyan */
   --bg-dark: #0f172a;
   --bg-card: rgba(30, 41, 59, 0.7);
   --text-main: #f8fafc;
@@ -21,10 +24,10 @@
 body {
   font-family: var(--font-main);
   background-color: var(--bg-dark);
-  background-image: 
-    radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), 
-    radial-gradient(at 50% 0%, hsla(225,39%,30%,1) 0, transparent 50%), 
-    radial-gradient(at 100% 0%, hsla(339,49%,30%,1) 0, transparent 50%);
+  background-image:
+    radial-gradient(at 0% 0%, hsla(253, 16%, 7%, 1) 0, transparent 50%),
+    radial-gradient(at 50% 0%, hsla(225, 39%, 30%, 1) 0, transparent 50%),
+    radial-gradient(at 100% 0%, hsla(339, 49%, 30%, 1) 0, transparent 50%);
   color: var(--text-main);
   min-height: 100vh;
   overflow-x: hidden;
@@ -109,8 +112,15 @@ body {
 
 /* Animations */
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .animate-fade-in {
@@ -122,9 +132,17 @@ body {
 }
 
 @keyframes float {
-  0% { transform: translateY(0px); }
-  50% { transform: translateY(-10px); }
-  100% { transform: translateY(0px); }
+  0% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(-10px);
+  }
+
+  100% {
+    transform: translateY(0px);
+  }
 }
 
 /* Layouts */
@@ -146,4 +164,102 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 20px;
+}
+
+/* Mobile First Responsiveness */
+@media (max-width: 768px) {
+  .container {
+    padding: 10px;
+  }
+
+  .full-screen-center {
+    padding: 10px;
+    align-items: flex-start;
+    /* Better for long forms on mobile */
+    padding-top: 40px;
+  }
+
+  .grid-auto {
+    grid-template-columns: 1fr;
+    gap: 15px;
+  }
+
+  .glass-panel {
+    padding: 15px !important;
+    border-radius: 12px;
+  }
+
+  .btn-primary,
+  .btn-secondary {
+    width: 100%;
+    /* Force full width buttons on mobile if inside stacks */
+    padding: 12px 16px;
+    font-size: 0.9rem;
+  }
+
+  h1 {
+    font-size: 1.8rem !important;
+  }
+
+  h2 {
+    font-size: 1.5rem !important;
+  }
+
+  .hide-mobile {
+    display: none !important;
+  }
+
+  .show-mobile {
+    display: block !important;
+  }
+
+  /* Flex wrap improvements */
+  .flex-mobile-column {
+    flex-direction: column !important;
+  }
+}
+
+@media (min-width: 769px) {
+  .show-mobile {
+    display: none !important;
+  }
+}
+
+.w-full {
+  width: 100%;
+}
+
+.flex-row-mobile-column {
+  display: flex;
+  flex-direction: row;
+}
+
+@media (max-width: 600px) {
+  .flex-row-mobile-column {
+    flex-direction: column;
+  }
+}
+
+.countdown-text {
+  font-size: 8rem;
+  font-weight: bold;
+  color: var(--accent);
+  margin: 20px 0;
+}
+
+.btn-xl {
+  font-size: 2rem;
+  padding: 20px 60px;
+}
+
+@media (max-width: 768px) {
+  .countdown-text {
+    font-size: 5rem;
+    margin: 10px 0;
+  }
+
+  .btn-xl {
+    font-size: 1.5rem;
+    padding: 15px 30px;
+  }
 }

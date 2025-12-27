@@ -106,7 +106,7 @@ const Landing = () => {
                 <button className="btn-primary" onClick={() => setShowHelp(false)} style={{ width: '100%', marginTop: '20px' }}>¡Entendido!</button>
             </Modal>
 
-            <div className="glass-panel text-center floating-card" style={{ padding: '3rem', maxWidth: '400px', width: '100%', position: 'relative' }}>
+            <div className="glass-panel text-center floating-card" style={{ padding: '2rem 1.5rem', maxWidth: '400px', width: '100%', position: 'relative' }}>
                 <button
                     onClick={() => setShowHelp(true)}
                     style={{
@@ -118,31 +118,29 @@ const Landing = () => {
                         color: 'var(--secondary)',
                         fontSize: '1.5rem',
                         cursor: 'pointer',
-                        transition: 'transform 0.2s'
+                        zIndex: 10
                     }}
-                    onMouseEnter={(e) => e.target.style.transform = 'scale(1.2)'}
-                    onMouseLeave={(e) => e.target.style.transform = 'scale(1)'}
                     title="Ayuda / Instrucciones"
                 >
                     <FaQuestionCircle />
                 </button>
 
-                <h1 style={{ marginBottom: '2rem', fontSize: '2.5rem', background: 'linear-gradient(to right, #ec4899, #8b5cf6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                <h1 style={{ marginBottom: '1.5rem', fontSize: '2rem', background: 'linear-gradient(to right, #ec4899, #8b5cf6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', lineHeight: '1.2' }}>
                     Cena de Nochevieja GAME
                 </h1>
 
-                <div style={{ marginBottom: '2rem' }}>
+                <div style={{ marginBottom: '2rem', display: 'flex', gap: '10px' }}>
                     <button
                         className={`btn-secondary ${isLogin ? 'active' : ''}`}
                         onClick={() => setIsLogin(true)}
-                        style={{ marginRight: '10px', background: isLogin ? 'rgba(236, 72, 153, 0.2)' : 'transparent' }}
+                        style={{ flex: 1, background: isLogin ? 'rgba(236, 72, 153, 0.2)' : 'transparent', fontSize: '0.9rem' }}
                     >
                         Entrar
                     </button>
                     <button
                         className={`btn-secondary ${!isLogin ? 'active' : ''}`}
                         onClick={() => setIsLogin(false)}
-                        style={{ background: !isLogin ? 'rgba(236, 72, 153, 0.2)' : 'transparent' }}
+                        style={{ flex: 1, background: !isLogin ? 'rgba(236, 72, 153, 0.2)' : 'transparent', fontSize: '0.9rem' }}
                     >
                         Crear Juego
                     </button>

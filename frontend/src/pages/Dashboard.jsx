@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { FaList, FaPlus, FaMusic, FaPlay, FaTrash, FaSignOutAlt, FaStop, FaEdit, FaKey, FaUser, FaPause, FaCrown, FaCog, FaCheck, FaTimes, FaLock } from 'react-icons/fa';
+import { FaList, FaPlus, FaMusic, FaPlay, FaTrash, FaSignOutAlt, FaStop, FaEdit, FaKey, FaUser, FaPause, FaCrown, FaCog, FaCheck, FaTimes, FaLock, FaGamepad, FaHammer, FaBullhorn, FaGavel, FaSave, FaUsers } from 'react-icons/fa';
 import Modal from '../components/Modal';
 
 const Dashboard = () => {
@@ -518,22 +518,22 @@ const Dashboard = () => {
                 </div>
             </Modal>
 
-            <div className="glass-panel" style={{ marginTop: '20px', padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-                <div>
-                    <h3>Hola, {user.username} {user.role === 'family_admin' && <FaCrown title="Administrador de Familia" style={{ color: 'gold', marginLeft: '5px' }} />}</h3>
-                    <h5 style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '5px' }}><FaUser /> Familia {game?.name}</h5>
+            <div className="glass-panel" style={{ marginTop: '20px', padding: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
+                <div style={{ flex: '1 0 200px' }}>
+                    <h3 style={{ fontSize: '1.2rem', marginBottom: '4px' }}>Hola, {user.username} {user.role === 'family_admin' && <FaCrown title="Administrador de Familia" style={{ color: 'gold', marginLeft: '5px' }} />}</h3>
+                    <h5 style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.85rem' }}><FaUser /> Familia {game?.name}</h5>
                 </div>
-                <div style={{ display: 'flex', gap: '10px' }}>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', flex: '1 0 250px', justifyContent: 'flex-end' }}>
                     {user.role === 'family_admin' && (
-                        <button className="btn-secondary" style={{ borderColor: 'gold', color: 'gold' }} onClick={openFamilySettings} title="Ajustes de Familia"><FaCog /></button>
+                        <button className="btn-secondary" style={{ borderColor: 'gold', color: 'gold', flex: 1, minWidth: '40px', padding: '10px' }} onClick={openFamilySettings} title="Ajustes de Familia"><FaCog /></button>
                     )}
-                    <button className="btn-secondary" onClick={openChangePassword} title="Cambiar Contraseña"><FaKey /></button>
+                    <button className="btn-secondary" style={{ flex: 1, minWidth: '40px', padding: '10px' }} onClick={openChangePassword} title="Cambiar Contraseña"><FaKey /></button>
                     {(user.role === 'family_admin' || user.canPlay) ? (
-                        <button className="btn-primary" onClick={() => navigate('/game')}><FaPlay /> Jugar</button>
+                        <button className="btn-primary" style={{ flex: 3, minWidth: '100px' }} onClick={() => navigate('/game')}><FaPlay /> Jugar</button>
                     ) : (
-                        <button className="btn-secondary" style={{ opacity: 0.5, cursor: 'not-allowed' }} title="Espera a que el admin habilite el juego"><FaLock /> Jugar (Bloqueado)</button>
+                        <button className="btn-secondary" style={{ opacity: 0.5, cursor: 'not-allowed', flex: 3, minWidth: '100px' }} title="Espera a que el admin habilite el juego"><FaLock /> Bloqueado</button>
                     )}
-                    <button className="btn-secondary" onClick={handleLogoutUser}><FaSignOutAlt /></button>
+                    <button className="btn-secondary" style={{ flex: 1, minWidth: '40px', padding: '10px' }} onClick={handleLogoutUser}><FaSignOutAlt /></button>
                 </div>
             </div>
 
@@ -544,12 +544,16 @@ const Dashboard = () => {
                 </div>
             )}
 
-            <div style={{ marginTop: '20px', display: 'flex', gap: '10px', overflowX: 'auto', paddingBottom: '10px' }}>
-                <button className={`btn-secondary ${activeTab === 'challenges' ? 'active' : ''}`} onClick={() => { setActiveTab('challenges'); resetForm(); }} style={{ background: activeTab === 'challenges' ? 'var(--secondary)' : 'transparent', color: activeTab === 'challenges' ? 'white' : 'var(--text-main)' }}><FaList /> Mis Pruebas</button>
-                <button className={`btn-secondary ${activeTab === 'new' ? 'active' : ''}`} onClick={() => { setActiveTab('new'); resetForm(); }} style={{ background: activeTab === 'new' ? 'var(--secondary)' : 'transparent', color: activeTab === 'new' ? 'white' : 'var(--text-main)' }}>
-                    {editingId ? <><FaEdit /> Editar Prueba</> : <><FaPlus /> Nueva Prueba</>}
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '10px', flexWrap: 'wrap' }}>
+                <button className={`btn-secondary ${activeTab === 'challenges' ? 'active' : ''}`} onClick={() => { setActiveTab('challenges'); stopSpeak(); }} style={{ flex: 1, background: activeTab === 'challenges' ? 'var(--secondary)' : 'transparent', color: activeTab === 'challenges' ? 'white' : 'var(--text-main)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                    <FaList /> <span className="hide-mobile">Mis Pruebas</span>
                 </button>
-                <button className={`btn-secondary ${activeTab === 'music' ? 'active' : ''}`} onClick={() => setActiveTab('music')} style={{ background: activeTab === 'music' ? 'var(--secondary)' : 'transparent', color: activeTab === 'music' ? 'white' : 'var(--text-main)' }}><FaMusic /> Música</button>
+                <button className={`btn-secondary ${activeTab === 'new' ? 'active' : ''}`} onClick={() => { setActiveTab('new'); stopSpeak(); }} style={{ flex: 1, background: activeTab === 'new' ? 'var(--secondary)' : 'transparent', color: activeTab === 'new' ? 'white' : 'var(--text-main)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                    {editingId ? <><FaEdit /> <span className="hide-mobile">Editar</span></> : <><FaPlus /> <span className="hide-mobile">Nueva</span></>}
+                </button>
+                <button className={`btn-secondary ${activeTab === 'music' ? 'active' : ''}`} onClick={() => { setActiveTab('music'); stopSpeak(); }} style={{ flex: 1, background: activeTab === 'music' ? 'var(--secondary)' : 'transparent', color: activeTab === 'music' ? 'white' : 'var(--text-main)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                    <FaMusic /> <span className="hide-mobile">Música</span>
+                </button>
             </div>
 
             <div className="glass-panel animate-fade-in" style={{ marginTop: '20px', padding: '20px', minHeight: '400px' }}>
@@ -575,16 +579,16 @@ const Dashboard = () => {
                                     </p>
                                 )}
 
-                                <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
                                     <span style={{ fontSize: '0.8rem' }}>⏱ {c.timeLimit === 0 ? '∞' : c.timeLimit + 's'}</span>
 
-                                    <div style={{ display: 'flex', gap: '5px' }} onClick={(e) => e.stopPropagation()}>
-                                        <button className="btn-secondary" style={{ padding: '5px 10px' }} onClick={() => handlePlayChallenge(c)} title="Reproducir"><FaPlay /></button>
-                                        <button className="btn-secondary" style={{ padding: '5px 10px', color: '#06b6d4' }} onClick={stopSpeak} title="Parar Audio"><FaStop /></button>
+                                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
+                                        <button className="btn-secondary" style={{ padding: '8px 12px' }} onClick={() => handlePlayChallenge(c)} title="Reproducir"><FaPlay /></button>
+                                        <button className="btn-secondary" style={{ padding: '8px 12px', color: '#06b6d4' }} onClick={stopSpeak} title="Parar Audio"><FaStop /></button>
                                         {(c.uploaderId === user.id || user.role === 'admin' || user.role === 'family_admin') && (
                                             <>
-                                                <button className="btn-secondary" style={{ padding: '5px 10px' }} onClick={() => handleEditChallenge(c)} title="Editar"><FaEdit /></button>
-                                                <button className="btn-danger" style={{ padding: '5px 10px' }} onClick={() => handleDeleteChallenge(c._id)} title="Borrar"><FaTrash /></button>
+                                                <button className="btn-secondary" style={{ padding: '8px 12px' }} onClick={() => handleEditChallenge(c)} title="Editar"><FaEdit /></button>
+                                                <button className="btn-danger" style={{ padding: '8px 12px' }} onClick={() => handleDeleteChallenge(c._id)} title="Borrar"><FaTrash /></button>
                                             </>
                                         )}
                                     </div>
@@ -609,24 +613,38 @@ const Dashboard = () => {
                         </div>
 
                         {/* Tabs Navigation */}
-                        <div style={{ display: 'flex', gap: '5px', overflowX: 'auto', paddingBottom: '5px' }}>
-                            {['game:Juego', 'players:Jugadores', 'tools:Herramientas', 'rules:Reglas', 'customization:Voz'].map(t => {
-                                const [key, label] = t.split(':');
+                        <div style={{ display: 'flex', gap: '5px', overflowX: 'auto', paddingBottom: '10px', borderBottom: '1px solid rgba(255,255,255,0.1)', marginBottom: '15px' }}>
+                            {[
+                                { key: 'game', label: 'Juego', icon: <FaGamepad /> },
+                                { key: 'players', label: 'Jugadores', icon: <FaUsers /> },
+                                { key: 'tools', label: 'Herramientas', icon: <FaHammer /> },
+                                { key: 'rules', label: 'Reglas', icon: <FaGavel /> },
+                                { key: 'customization', label: 'Voz', icon: <FaBullhorn /> }
+                            ].map(t => {
+                                const isActive = formTab === t.key;
                                 return (
                                     <button
                                         type="button"
-                                        key={key}
-                                        className={`btn-secondary ${formTab === key ? 'active' : ''}`}
-                                        onClick={() => setFormTab(key)}
+                                        key={t.key}
+                                        className={`btn-secondary ${isActive ? 'active' : ''}`}
+                                        onClick={() => setFormTab(t.key)}
+                                        title={t.label}
                                         style={{
-                                            background: formTab === key ? 'var(--secondary)' : 'transparent',
-                                            color: formTab === key ? 'white' : 'var(--text-main)',
+                                            background: isActive ? 'var(--secondary)' : 'transparent',
+                                            color: isActive ? 'white' : 'var(--text-main)',
                                             flex: 1,
-                                            fontSize: '0.9rem',
-                                            padding: '8px 5px'
+                                            fontSize: '1rem',
+                                            padding: '12px 5px',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            gap: '4px',
+                                            minWidth: '60px'
                                         }}
                                     >
-                                        {label}
+                                        {t.icon}
+                                        <span style={{ fontSize: '0.65rem', display: 'block' }} className="hide-mobile">{t.label}</span>
                                     </button>
                                 );
                             })}
@@ -970,36 +988,44 @@ const Dashboard = () => {
                         )}
 
                         {/* Footer Actions */}
-                        <div style={{ display: 'flex', gap: '10px', marginTop: '10px', borderTop: '1px solid gray', paddingTop: '15px' }}>
-                            <button type="submit" className="btn-primary" style={{ flex: 1, padding: '12px', fontSize: '1.1rem' }}>
-                                {editingId ? <><FaEdit /> Actualizar Prueba</> : <><FaPlus /> Guardar Prueba</>}
-                            </button>
+                        <div style={{ display: 'flex', gap: '10px', marginTop: '20px', flexWrap: 'wrap' }}>
                             {editingId && (
-                                <button type="button" className="btn-secondary" onClick={() => { resetForm(); setActiveTab('challenges'); }}>
+                                <button type="button" className="btn-secondary" onClick={() => { resetForm(); setActiveTab('challenges'); }} style={{ flex: 1 }}>
                                     Cancelar
                                 </button>
                             )}
+                            <button type="submit" className="btn-primary" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
+                                <FaSave /> {editingId ? 'Guardar Cambios' : 'Crear Prueba'}
+                            </button>
                         </div>
                     </form>
                 )}
 
                 {activeTab === 'music' && (
                     <div>
-                        <form onSubmit={handleUploadAudio} style={{ marginBottom: '20px', display: 'flex', gap: '10px', alignItems: 'center' }}>
-                            <input type="file" className="glass-input" accept="audio/*" onChange={e => setAudioFile(e.target.files[0])} />
+                        <form onSubmit={handleUploadAudio} style={{ marginBottom: '20px', display: 'flex', gap: '15px', alignItems: 'flex-end', flexWrap: 'wrap', background: 'rgba(255,255,255,0.05)', padding: '15px', borderRadius: '10px' }}>
+                            <div style={{ flex: '1 0 250px' }}>
+                                <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>Seleccionar archivo (MP3, WAV)</label>
+                                <input type="file" className="glass-input" accept="audio/*" onChange={e => setAudioFile(e.target.files[0])} />
+                            </div>
 
-                            <div style={{ display: 'flex', flexDirection: 'column', minWidth: '150px' }}>
-                                <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Duración: {audioDuration}s</label>
+                            <div style={{ flex: '1 0 150px' }}>
+                                <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '5px' }}>
+                                    <span>Duración</span>
+                                    <span>{audioDuration}s</span>
+                                </label>
                                 <input
                                     type="range" min="5" max="30" step="1"
                                     value={audioDuration}
                                     onChange={e => setAudioDuration(parseInt(e.target.value))}
-                                    style={{ width: '100%' }}
+                                    style={{ width: '100%', accentColor: 'var(--secondary)' }}
                                 />
                             </div>
 
-                            <button type="submit" className="btn-primary" disabled={!audioFile}>Subir</button>
-                            <span style={{ fontSize: '0.8rem', color: 'orange' }}>(Máx 15MB)</span>
+                            <button type="submit" className="btn-primary" disabled={!audioFile} style={{ flex: '1 0 100px' }}>Subir Himno</button>
+                            <div style={{ width: '100%', textAlign: 'center' }}>
+                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Límite: 15MB</span>
+                            </div>
                         </form>
                         <div className="grid-auto">
                             {audios.map(a => (
