@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { FaList, FaPlus, FaMusic, FaPlay, FaTrash, FaSignOutAlt, FaStop, FaEdit, FaKey, FaUser, FaPause, FaCrown, FaCog, FaCheck, FaTimes, FaLock, FaGamepad, FaHammer, FaBullhorn, FaGavel, FaSave, FaUsers } from 'react-icons/fa';
+import { FaPlay, FaPause, FaStop, FaPlus, FaSignOutAlt, FaCrown, FaUser, FaSave, FaTrash, FaEdit, FaKey, FaCog, FaUsers, FaImage, FaVideo, FaFileAlt, FaMusic, FaYoutube, FaCheck, FaTimes, FaLock, FaGamepad, FaHammer, FaBullhorn, FaGavel, FaList } from 'react-icons/fa';
 import Modal from '../components/Modal';
 
 const Dashboard = () => {
@@ -11,6 +11,7 @@ const Dashboard = () => {
     const [activeTab, setActiveTab] = useState('challenges');
     const [challenges, setChallenges] = useState([]);
     const [audios, setAudios] = useState([]);
+    const [mediaTab, setMediaTab] = useState('image'); // Added media tab state
 
     // Modal State
     const [modal, setModal] = useState({ isOpen: false, title: '', message: '', type: 'alert', children: null, onConfirm: null });
@@ -909,42 +910,90 @@ const Dashboard = () => {
                                     <label style={{ display: 'block', marginBottom: '10px', color: 'var(--secondary)', fontWeight: 'bold' }}>Multimedia (Opcional)</label>
                                     <p style={{ fontSize: '0.8rem', color: 'gray', marginTop: '-5px', marginBottom: '15px' }}>Sube archivos para mostrar durante la prueba. El nuevo reemplaza al anterior.</p>
 
-                                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px' }}>
-                                        {/* Image Upload */}
-                                        <div style={{ background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '8px' }}>
-                                            <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.9rem' }}>🖼 Imagen (Máx 8MB)</label>
-                                            <input type="file" className="glass-input" onChange={e => handleMediaUpload(e, 'image')} accept="image/*" style={{ fontSize: '0.8rem' }} title="Subir imagen" />
-                                            {newChallenge.multimedia?.image?.url ? (
-                                                <div style={{ marginTop: '5px', fontSize: '0.8rem', color: '#4ade80' }}>✓ {newChallenge.multimedia.image.filename}</div>
-                                            ) : <div style={{ marginTop: '5px', fontSize: '0.8rem', color: 'gray' }}>Sin archivo</div>}
-                                        </div>
+                                    <div style={{ display: 'flex', gap: '8px', marginBottom: '15px' }}>
+                                        <button type="button" className={`btn-secondary ${mediaTab === 'image' ? 'active' : ''}`} onClick={() => setMediaTab('image')} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', borderColor: mediaTab === 'image' ? 'var(--primary)' : '' }}><FaImage /> <span className="hide-mobile">Imagen</span></button>
+                                        <button type="button" className={`btn-secondary ${mediaTab === 'audio' ? 'active' : ''}`} onClick={() => setMediaTab('audio')} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', borderColor: mediaTab === 'audio' ? 'var(--primary)' : '' }}><FaMusic /> <span className="hide-mobile">Audio</span></button>
+                                        <button type="button" className={`btn-secondary ${mediaTab === 'video' ? 'active' : ''}`} onClick={() => setMediaTab('video')} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', borderColor: mediaTab === 'video' ? 'var(--primary)' : '' }}><FaVideo /> <span className="hide-mobile">Video</span></button>
+                                        <button type="button" className={`btn-secondary ${mediaTab === 'document' ? 'active' : ''}`} onClick={() => setMediaTab('document')} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', borderColor: mediaTab === 'document' ? 'var(--primary)' : '' }}><FaFileAlt /> <span className="hide-mobile">Doc</span></button>
+                                    </div>
 
-                                        {/* Audio Upload */}
-                                        <div style={{ background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '8px' }}>
-                                            <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.9rem' }}>🎵 Audio (Máx 15MB)</label>
-                                            <input type="file" className="glass-input" onChange={e => handleMediaUpload(e, 'audio')} accept="audio/*" style={{ fontSize: '0.8rem' }} title="Subir audio" />
-                                            {newChallenge.multimedia?.audio?.url ? (
-                                                <div style={{ marginTop: '5px', fontSize: '0.8rem', color: '#4ade80' }}>✓ {newChallenge.multimedia.audio.filename}</div>
-                                            ) : <div style={{ marginTop: '5px', fontSize: '0.8rem', color: 'gray' }}>Sin archivo</div>}
-                                        </div>
+                                    <div style={{ background: 'rgba(255,255,255,0.05)', padding: '15px', borderRadius: '8px', minHeight: '120px' }}>
 
-                                        {/* Video Upload */}
-                                        <div style={{ background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '8px' }}>
-                                            <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.9rem' }}>🎬 Video (Máx 50MB)</label>
-                                            <input type="file" className="glass-input" onChange={e => handleMediaUpload(e, 'video')} accept="video/*" style={{ fontSize: '0.8rem' }} title="Subir video" />
-                                            {newChallenge.multimedia?.video?.url ? (
-                                                <div style={{ marginTop: '5px', fontSize: '0.8rem', color: '#4ade80' }}>✓ {newChallenge.multimedia.video.filename}</div>
-                                            ) : <div style={{ marginTop: '5px', fontSize: '0.8rem', color: 'gray' }}>Sin archivo</div>}
-                                        </div>
+                                        {/* IMAGE TAB */}
+                                        {mediaTab === 'image' && (
+                                            <div>
+                                                <label style={{ display: 'block', marginBottom: '10px' }}>Imagen (Máx 8MB)</label>
+                                                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                                                    <input type="file" className="glass-input" onChange={e => handleMediaUpload(e, 'image')} accept="image/*" />
+                                                    {newChallenge.multimedia?.image?.url && (
+                                                        <button type="button" className="btn-danger" onClick={() => setNewChallenge({ ...newChallenge, multimedia: { ...newChallenge.multimedia, image: null } })} title="Borrar Imagen"><FaTrash /></button>
+                                                    )}
+                                                </div>
+                                                {newChallenge.multimedia?.image?.url && <div style={{ marginTop: '5px', color: '#4ade80' }}>✓ {newChallenge.multimedia.image.filename}</div>}
+                                            </div>
+                                        )}
 
-                                        {/* Document Upload (NEW) */}
-                                        <div style={{ background: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '8px' }}>
-                                            <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.9rem' }}>📄 Documento (PDF, etc)</label>
-                                            <input type="file" className="glass-input" onChange={e => handleMediaUpload(e, 'document')} accept=".pdf,.txt,.doc,.docx" style={{ fontSize: '0.8rem' }} title="Subir documento" />
-                                            {newChallenge.multimedia?.document?.url ? (
-                                                <div style={{ marginTop: '5px', fontSize: '0.8rem', color: '#4ade80' }}>✓ {newChallenge.multimedia.document.filename}</div>
-                                            ) : <div style={{ marginTop: '5px', fontSize: '0.8rem', color: 'gray' }}>Sin archivo</div>}
-                                        </div>
+                                        {/* AUDIO TAB */}
+                                        {mediaTab === 'audio' && (
+                                            <div>
+                                                <label style={{ display: 'block', marginBottom: '10px' }}>Audio (Máx 15MB)</label>
+                                                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                                                    <input type="file" className="glass-input" onChange={e => handleMediaUpload(e, 'audio')} accept="audio/*" />
+                                                    {newChallenge.multimedia?.audio?.url && (
+                                                        <button type="button" className="btn-danger" onClick={() => setNewChallenge({ ...newChallenge, multimedia: { ...newChallenge.multimedia, audio: null } })} title="Borrar Audio"><FaTrash /></button>
+                                                    )}
+                                                </div>
+                                                {newChallenge.multimedia?.audio?.url && <div style={{ marginTop: '5px', color: '#4ade80' }}>✓ {newChallenge.multimedia.audio.filename}</div>}
+                                            </div>
+                                        )}
+
+                                        {/* VIDEO TAB (File + YouTube) */}
+                                        {mediaTab === 'video' && (
+                                            <div>
+                                                <label style={{ display: 'block', marginBottom: '5px' }}>Video (Máx 50MB)</label>
+                                                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '15px' }}>
+                                                    <input type="file" className="glass-input" onChange={e => handleMediaUpload(e, 'video')} accept="video/*" />
+                                                    {newChallenge.multimedia?.video?.url && !newChallenge.multimedia.video.isYoutube && (
+                                                        <button type="button" className="btn-danger" onClick={() => setNewChallenge({ ...newChallenge, multimedia: { ...newChallenge.multimedia, video: null } })} title="Borrar Video"><FaTrash /></button>
+                                                    )}
+                                                </div>
+                                                {newChallenge.multimedia?.video?.url && !newChallenge.multimedia.video.isYoutube && <div style={{ marginTop: '-10px', marginBottom: '15px', color: '#4ade80' }}>✓ {newChallenge.multimedia.video.filename}</div>}
+
+                                                <label style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '5px' }}><FaYoutube color="red" /> O Enlace</label>
+                                                <div style={{ display: 'flex', gap: '10px' }}>
+                                                    <input
+                                                        type="text" className="glass-input" placeholder="https://..."
+                                                        value={newChallenge.multimedia?.video?.isYoutube ? newChallenge.multimedia.video.url : ''}
+                                                        onChange={(e) => {
+                                                            const val = e.target.value;
+                                                            if (!val) {
+                                                                setNewChallenge({ ...newChallenge, multimedia: { ...newChallenge.multimedia, video: null } });
+                                                            } else {
+                                                                setNewChallenge({ ...newChallenge, multimedia: { ...newChallenge.multimedia, video: { url: val, filename: 'Video Externo', isYoutube: true } } });
+                                                            }
+                                                        }}
+                                                    />
+                                                    {newChallenge.multimedia?.video?.isYoutube && (
+                                                        <button type="button" className="btn-danger" onClick={() => setNewChallenge({ ...newChallenge, multimedia: { ...newChallenge.multimedia, video: null } })}><FaTrash /></button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* DOCUMENT TAB */}
+                                        {mediaTab === 'document' && (
+                                            <div>
+                                                <label style={{ display: 'block', marginBottom: '10px' }}>Documento</label>
+                                                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                                                    <input type="file" className="glass-input" onChange={e => handleMediaUpload(e, 'document')} accept=".pdf,.txt,.doc,.docx" />
+                                                    {newChallenge.multimedia?.document?.url && (
+                                                        <button type="button" className="btn-danger" onClick={() => setNewChallenge({ ...newChallenge, multimedia: { ...newChallenge.multimedia, document: null } })} title="Borrar Documento"><FaTrash /></button>
+                                                    )}
+                                                </div>
+                                                {newChallenge.multimedia?.document?.url && <div style={{ marginTop: '5px', color: '#4ade80' }}>✓ {newChallenge.multimedia.document.filename}</div>}
+                                            </div>
+                                        )}
+
                                     </div>
 
                                     {uploadingMedia && <p className="animate-pulse" style={{ marginTop: '15px', textAlign: 'center', color: 'var(--secondary)' }}>⏳ Subiendo archivo...</p>}
