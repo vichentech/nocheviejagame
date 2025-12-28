@@ -77,9 +77,9 @@ router.put('/users/:id/permissions', [auth, familyAdminAuth], async (req, res) =
 });
 
 // @route   PUT /api/family/game
-// @desc    Update my game (Name or Password)
+// @desc    Update my game (Name, Password, Config)
 router.put('/game', [auth, familyAdminAuth], async (req, res) => {
-    const { name, password } = req.body;
+    const { name, password, minTime, maxTime, defaultParticipants } = req.body;
     try {
         const game = await Game.findById(req.user.gameId);
         if (!game) return res.status(404).json({ msg: 'Game not found' });
@@ -89,6 +89,12 @@ router.put('/game', [auth, familyAdminAuth], async (req, res) => {
             const salt = await bcrypt.genSalt(10);
             game.passwordHash = await bcrypt.hash(password, salt);
         }
+
+        // Update Config
+        if (!game.config) game.config = {};
+        if (minTime !== undefined) game.config.minTime = parseInt(minTime);
+        if (maxTime !== undefined) game.config.maxTime = parseInt(maxTime);
+        if (defaultParticipants !== undefined) game.config.defaultParticipants = parseInt(defaultParticipants);
 
         await game.save();
         res.json({ msg: 'Game updated successfully', game });

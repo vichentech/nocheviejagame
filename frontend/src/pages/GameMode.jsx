@@ -8,11 +8,55 @@ const GameMode = () => {
     const { user, game } = useAuth();
     const navigate = useNavigate();
 
-    // Config States (Stored in localStorage)
-    const [minTime, setMinTime] = useState(localStorage.getItem('minTime') || 60);
-    const [maxTime, setMaxTime] = useState(localStorage.getItem('maxTime') || 300);
+    // Config States (Initialized from localStorage or Game Config)
+    const [minTime, setMinTime] = useState(() => {
+        const storedMin = parseInt(localStorage.getItem('gameSessionMinTime'));
+        if (!isNaN(storedMin)) return storedMin;
+        return game?.config?.minTime || 60;
+    });
+
+    const [maxTime, setMaxTime] = useState(() => {
+        const storedMax = parseInt(localStorage.getItem('gameSessionMaxTime'));
+        if (!isNaN(storedMax)) return storedMax;
+        return game?.config?.maxTime || 300;
+    });
+
     const [isManualMode, setIsManualMode] = useState(false);
     const isFamilyAdmin = user?.role === 'family_admin' || user?.role === 'admin';
+
+    // Validate session config against Game DB Config on load/update
+    useEffect(() => {
+        if (game?.config) {
+            let currentMin = minTime;
+            let currentMax = maxTime;
+            let changed = false;
+
+            // Enforce Lower Bound
+            if (currentMin < game.config.minTime) {
+                currentMin = game.config.minTime;
+                changed = true;
+            }
+            // Enforce Upper Bound
+            if (currentMax > game.config.maxTime) {
+                currentMax = game.config.maxTime;
+                changed = true;
+            }
+            // Ensure Min <= Max
+            if (currentMin > currentMax) {
+                currentMin = currentMax; // or adjust max
+                changed = true;
+            }
+
+            if (changed) {
+                setMinTime(currentMin);
+                setMaxTime(currentMax);
+                localStorage.setItem('gameSessionMinTime', currentMin);
+                localStorage.setItem('gameSessionMaxTime', currentMax);
+            }
+
+            setNumWinners(game.config.defaultParticipants);
+        }
+    }, [game]); // Removed minTime/maxTime from deps to avoid loop. only check when game.config loads
 
     // Ensure non-admins are always in Auto mode
     useEffect(() => {
@@ -55,7 +99,7 @@ const GameMode = () => {
     const [randomMax, setRandomMax] = useState(10);
     const [pendingRandomData, setPendingRandomData] = useState(null);
     const [challengeTab, setChallengeTab] = useState('info'); // 'info' | 'media'
-    const [numWinners, setNumWinners] = useState(parseInt(localStorage.getItem('defaultParticipants')) || 1); // Allow Admin to override participants count. Read from global config.
+    const [numWinners, setNumWinners] = useState(game?.config?.defaultParticipants || 1); // Allow Admin to override participants count. Read from global config.
 
     const getYoutubeId = (url) => {
         if (!url) return null;
@@ -107,19 +151,25 @@ const GameMode = () => {
         setMinTime(cleanMin);
         let cleanMax = parseInt(max);
         setMaxTime(cleanMax);
+        localStorage.setItem('gameSessionMinTime', cleanMin);
+        localStorage.setItem('gameSessionMaxTime', cleanMax);
     };
 
     const validateAndSaveConfig = () => {
+        const globalMin = game?.config?.minTime || 60;
+        const globalMax = game?.config?.maxTime || 300;
+
         let finalMin = parseInt(minTime);
-        if (isNaN(finalMin) || finalMin < 60) finalMin = 60;
+        if (isNaN(finalMin) || finalMin < globalMin) finalMin = globalMin;
 
         let finalMax = parseInt(maxTime);
-        if (isNaN(finalMax) || finalMax < finalMin) finalMax = finalMin;
+        if (isNaN(finalMax) || finalMax > globalMax) finalMax = globalMax;
+        if (finalMax < finalMin) finalMax = finalMin;
 
         setMinTime(finalMin);
         setMaxTime(finalMax);
-        localStorage.setItem('minTime', finalMin);
-        localStorage.setItem('maxTime', finalMax);
+        localStorage.setItem('gameSessionMinTime', finalMin);
+        localStorage.setItem('gameSessionMaxTime', finalMax);
 
         return { min: finalMin, max: finalMax };
     };
@@ -647,14 +697,14 @@ const GameMode = () => {
                                                 className="glass-input"
                                                 type="number"
                                                 value={minTime}
-                                                onChange={(e) => {
-                                                    const globalMin = parseInt(localStorage.getItem('minTime')) || 60;
-                                                    const globalMax = parseInt(localStorage.getItem('maxTime')) || 300;
+                                                onChange={(e) => setMinTime(parseInt(e.target.value) || 0)}
+                                                onBlur={(e) => {
+                                                    const globalMin = game?.config?.minTime || 60;
                                                     let val = parseInt(e.target.value);
-                                                    if (isNaN(val)) val = globalMin;
-                                                    if (val < globalMin) val = globalMin;
+                                                    if (isNaN(val) || val < globalMin) val = globalMin;
                                                     if (val > maxTime) val = maxTime;
                                                     setMinTime(val);
+                                                    localStorage.setItem('gameSessionMinTime', val);
                                                 }}
                                                 style={{ textAlign: 'center', width: '80px', fontSize: '1.2rem' }}
                                             />
@@ -665,20 +715,20 @@ const GameMode = () => {
                                                 className="glass-input"
                                                 type="number"
                                                 value={maxTime}
-                                                onChange={(e) => {
-                                                    const globalMin = parseInt(localStorage.getItem('minTime')) || 60;
-                                                    const globalMax = parseInt(localStorage.getItem('maxTime')) || 300;
+                                                onChange={(e) => setMaxTime(parseInt(e.target.value) || 0)}
+                                                onBlur={(e) => {
+                                                    const globalMax = game?.config?.maxTime || 300;
                                                     let val = parseInt(e.target.value);
-                                                    if (isNaN(val)) val = globalMax;
-                                                    if (val > globalMax) val = globalMax;
+                                                    if (isNaN(val) || val > globalMax) val = globalMax;
                                                     if (val < minTime) val = minTime;
                                                     setMaxTime(val);
+                                                    localStorage.setItem('gameSessionMaxTime', val);
                                                 }}
                                                 style={{ textAlign: 'center', width: '80px', fontSize: '1.2rem' }}
                                             />
                                         </div>
                                     </div>
-                                    <small style={{ color: 'gray', fontSize: '0.7rem' }}>Límites Globales: {localStorage.getItem('minTime') || 60}s - {localStorage.getItem('maxTime') || 300}s</small>
+                                    <small style={{ color: 'gray', fontSize: '0.7rem' }}>Límites Globales: {game?.config?.minTime || 60}s - {game?.config?.maxTime || 300}s</small>
                                 </div>
                             )}
 
@@ -763,15 +813,17 @@ const GameMode = () => {
                     )}
 
                     {(status === 'ANNOUNCING' || status === 'READY_TO_PLAY') && (
-                        <div className="animate-fade-in" style={{ maxWidth: '1000px', width: '95%', margin: '0 auto' }}>
-                            <h5 style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Jugador que Propone:</h5>
-                            <h2 style={{ color: 'var(--secondary)', marginBottom: '15px', fontSize: '1.4rem' }}>{currentData?.victim?.username}</h2>
+                        <div className="animate-fade-in" style={{ maxWidth: '100%', width: '100%', margin: '0 auto', padding: '0 5px' }}>
+                            {game?.name && <h3 style={{ color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '2px', opacity: 0.7, marginBottom: '10px', fontSize: '1rem', textAlign: 'center' }}>{game.name}</h3>}
 
-                            <div style={{ border: '1px solid rgba(255,255,255,0.2)', padding: '20px', borderRadius: '15px', background: 'rgba(0,0,0,0.3)', minHeight: '400px', display: 'flex', flexDirection: 'column' }}>
+                            <h5 style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Jugador que Propone:</h5>
+                            <h2 style={{ color: 'var(--secondary)', marginBottom: '10px', fontSize: '1.2rem' }}>{currentData?.victim?.username}</h2>
+
+                            <div style={{ border: '1px solid rgba(255,255,255,0.2)', padding: '10px', borderRadius: '15px', background: 'rgba(0,0,0,0.3)', minHeight: '400px', display: 'flex', flexDirection: 'column' }}>
 
                                 {/* TABS HEADER */}
                                 {(currentData?.challenge?.multimedia?.image || currentData?.challenge?.multimedia?.video || currentData?.challenge?.multimedia?.document) && (
-                                    <div style={{ display: 'flex', gap: '15px', marginBottom: '20px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '10px', justifyContent: 'center' }}>
+                                    <div style={{ display: 'flex', gap: '5px', marginBottom: '15px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '10px', justifyContent: 'center' }}>
                                         <button
                                             onClick={() => setChallengeTab('info')}
                                             className="btn-text"
@@ -779,14 +831,16 @@ const GameMode = () => {
                                                 borderBottom: challengeTab === 'info' ? '3px solid var(--primary)' : '3px solid transparent',
                                                 color: challengeTab === 'info' ? 'white' : 'rgba(255,255,255,0.5)',
                                                 background: challengeTab === 'info' ? 'rgba(255,255,255,0.05)' : 'transparent',
-                                                padding: '10px 20px',
+                                                padding: '8px 15px',
                                                 borderRadius: '8px 8px 0 0',
-                                                fontSize: '1.1rem',
+                                                fontSize: '1rem',
                                                 fontWeight: challengeTab === 'info' ? 'bold' : 'normal',
                                                 display: 'flex',
                                                 alignItems: 'center',
-                                                gap: '8px',
-                                                transition: 'all 0.2s'
+                                                gap: '5px',
+                                                transition: 'all 0.2s',
+                                                flex: 1,
+                                                justifyContent: 'center'
                                             }}
                                         >
                                             <FaList /> La Prueba
@@ -798,70 +852,72 @@ const GameMode = () => {
                                                 borderBottom: challengeTab === 'media' ? '3px solid var(--primary)' : '3px solid transparent',
                                                 color: challengeTab === 'media' ? 'white' : 'rgba(255,255,255,0.5)',
                                                 background: challengeTab === 'media' ? 'rgba(255,255,255,0.05)' : 'transparent',
-                                                padding: '10px 20px',
+                                                padding: '8px 15px',
                                                 borderRadius: '8px 8px 0 0',
-                                                fontSize: '1.1rem',
+                                                fontSize: '1rem',
                                                 fontWeight: challengeTab === 'media' ? 'bold' : 'normal',
                                                 display: 'flex',
                                                 alignItems: 'center',
-                                                gap: '8px',
-                                                transition: 'all 0.2s'
+                                                gap: '5px',
+                                                transition: 'all 0.2s',
+                                                flex: 1,
+                                                justifyContent: 'center'
                                             }}
                                         >
-                                            <FaImage /> Multimedia <span className="badge" style={{ background: 'var(--primary)', fontSize: '0.7rem', marginLeft: '5px' }}>!</span>
+                                            <FaImage /> Media <span className="badge" style={{ background: 'var(--primary)', fontSize: '0.6rem', marginLeft: '3px' }}>!</span>
                                         </button>
                                     </div>
                                 )}
 
                                 {/* INFO TAB CONTENT */}
                                 {(!((currentData?.challenge?.multimedia?.image || currentData?.challenge?.multimedia?.video || currentData?.challenge?.multimedia?.document)) || challengeTab === 'info') && (
-                                    <div className="animate-fade-in">
-                                        <h1 style={{ marginBottom: '15px', fontSize: '2rem', textAlign: 'center', color: '#fbbf24' }}>{currentData?.challenge?.title}</h1>
-                                        <p style={{ fontSize: '1.4rem', marginBottom: '25px', lineHeight: '1.6', whiteSpace: 'pre-wrap', textAlign: 'left' }}>{currentData?.challenge?.text}</p>
+                                    <div className="animate-fade-in" style={{ padding: '0 5px' }}>
+                                        <h1 style={{ marginBottom: '10px', fontSize: 'clamp(1.5rem, 5vw, 2.5rem)', textAlign: 'center', color: '#fbbf24', wordWrap: 'break-word' }}>{currentData?.challenge?.title}</h1>
+                                        <p style={{ fontSize: 'clamp(1rem, 3vw, 1.4rem)', marginBottom: '20px', lineHeight: '1.5', whiteSpace: 'pre-wrap', textAlign: 'left', wordWrap: 'break-word' }}>{currentData?.challenge?.text}</p>
 
                                         {/* Audio Player (Always Visible) */}
                                         {currentData?.challenge?.multimedia?.audio && (
-                                            <div style={{ marginBottom: '20px', background: 'rgba(255,255,255,0.05)', padding: '15px', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '15px' }}>
-                                                <div style={{ background: 'var(--primary)', padding: '10px', borderRadius: '50%' }}><FaMusic /></div>
+                                            <div style={{ marginBottom: '15px', background: 'rgba(255,255,255,0.05)', padding: '10px', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                <div style={{ background: 'var(--primary)', padding: '8px', borderRadius: '50%' }}><FaMusic /></div>
                                                 <div style={{ flex: 1 }}>
-                                                    <p style={{ fontSize: '0.9rem', marginBottom: '5px', opacity: 0.8 }}>Audio de la prueba (Suena al Jugar)</p>
+                                                    <p style={{ fontSize: '0.8rem', marginBottom: '3px', opacity: 0.8 }}>Audio de la prueba</p>
                                                     <audio controls src={currentData.challenge.multimedia.audio.url} style={{ width: '100%' }} />
                                                 </div>
                                             </div>
                                         )}
 
                                         {currentData?.challenge?.punishment && (
-                                            <div style={{ marginBottom: '20px', padding: '15px', background: 'rgba(220, 38, 38, 0.15)', borderRadius: '8px', borderLeft: '5px solid #ef4444' }}>
-                                                <strong style={{ fontSize: '1.2rem', color: '#fca5a5' }}>💀 CASTIGO:</strong>
-                                                <p style={{ fontSize: '1.1rem', margin: '5px 0 0 0' }}>{currentData.challenge.punishment}</p>
+                                            <div style={{ marginBottom: '15px', padding: '10px', background: 'rgba(220, 38, 38, 0.15)', borderRadius: '8px', borderLeft: '5px solid #ef4444' }}>
+                                                <strong style={{ fontSize: '1rem', color: '#fca5a5' }}>💀 CASTIGO:</strong>
+                                                <p style={{ fontSize: 'clamp(0.9rem, 2.5vw, 1.1rem)', margin: '3px 0 0 0' }}>{currentData.challenge.punishment}</p>
                                             </div>
                                         )}
 
                                         {/* RANDOM NUMBERS */}
                                         {currentData?.challenge?.playerConfig?.targetType === 'random' && (
-                                            <div style={{ margin: '20px 0', padding: '20px', background: 'rgba(255,255,255,0.05)', borderRadius: '15px', border: '1px dashed rgba(255,255,255,0.2)' }}>
-                                                <h3 style={{ marginBottom: '15px', textAlign: 'center', color: 'var(--secondary)' }}>🎲 Sorteo Aleatorio</h3>
-                                                <div style={{ display: 'flex', gap: '15px', alignItems: 'center', justifyContent: 'center', marginBottom: '20px', flexWrap: 'wrap' }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                        <label>Máx:</label>
-                                                        <input type="number" className="glass-input" value={randomMax} onChange={(e) => setRandomMax(parseInt(e.target.value))} style={{ width: '70px', textAlign: 'center', padding: '8px', fontSize: '1.1rem' }} disabled={!isFamilyAdmin} />
+                                            <div style={{ margin: '15px 0', padding: '15px', background: 'rgba(255,255,255,0.05)', borderRadius: '15px', border: '1px dashed rgba(255,255,255,0.2)' }}>
+                                                <h3 style={{ marginBottom: '10px', textAlign: 'center', color: 'var(--secondary)', fontSize: '1.2rem' }}>🎲 Sorteo Aleatorio</h3>
+                                                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', justifyContent: 'center', marginBottom: '15px', flexWrap: 'wrap' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                        <label style={{ fontSize: '0.9rem' }}>Máx:</label>
+                                                        <input type="number" className="glass-input" value={randomMax} onChange={(e) => setRandomMax(parseInt(e.target.value))} style={{ width: '60px', textAlign: 'center', padding: '5px', fontSize: '1rem' }} disabled={!isFamilyAdmin} />
                                                     </div>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                        <label>Participantes:</label>
-                                                        <input type="number" className="glass-input" value={numWinners} onChange={(e) => setNumWinners(parseInt(e.target.value))} style={{ width: '70px', textAlign: 'center', padding: '8px', fontSize: '1.1rem' }} disabled={!isFamilyAdmin} />
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                        <label style={{ fontSize: '0.9rem' }}>Ganadores:</label>
+                                                        <input type="number" className="glass-input" value={numWinners} onChange={(e) => setNumWinners(parseInt(e.target.value))} style={{ width: '60px', textAlign: 'center', padding: '5px', fontSize: '1rem' }} disabled={!isFamilyAdmin} />
                                                     </div>
-                                                    {isFamilyAdmin && <button className="btn-secondary" onClick={generateRandomNumbers}>RE-GENERAR</button>}
+                                                    {isFamilyAdmin && <button className="btn-secondary" onClick={generateRandomNumbers} style={{ fontSize: '0.8rem', padding: '5px 10px' }}>RE-GENERAR</button>}
                                                 </div>
                                                 {generatedNumbers.length > 0 && (
-                                                    <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: '#fbbf24', display: 'flex', flexWrap: 'wrap', gap: '15px', justifyContent: 'center' }}>
+                                                    <div style={{ fontSize: 'clamp(2rem, 6vw, 2.5rem)', fontWeight: 'bold', color: '#fbbf24', display: 'flex', flexWrap: 'wrap', gap: '10px', justifyContent: 'center' }}>
                                                         {generatedNumbers.map((num, i) => (
                                                             <div key={i} className="animate-bounce-in" style={{
                                                                 background: 'linear-gradient(135deg, rgba(0,0,0,0.4), rgba(0,0,0,0.2))',
-                                                                padding: '10px 20px',
-                                                                borderRadius: '12px',
+                                                                padding: '5px 15px',
+                                                                borderRadius: '10px',
                                                                 border: '2px solid rgba(251, 191, 36, 0.5)',
                                                                 boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
-                                                                minWidth: '60px',
+                                                                minWidth: '50px',
                                                                 textAlign: 'center'
                                                             }}>{num}</div>
                                                         ))}
@@ -874,20 +930,20 @@ const GameMode = () => {
 
                                 {/* MEDIA TAB CONTENT */}
                                 {challengeTab === 'media' && (currentData?.challenge?.multimedia?.image || currentData?.challenge?.multimedia?.video || currentData?.challenge?.multimedia?.document) && (
-                                    <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px', alignItems: 'center', width: '100%', padding: '10px' }}>
+                                    <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '15px', alignItems: 'center', width: '100%', padding: '5px' }}>
 
                                         {/* Image */}
                                         {currentData.challenge.multimedia.image && (
                                             <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                                                <h4 style={{ marginBottom: '10px', opacity: 0.8 }}><FaImage /> Imagen Adjunta</h4>
-                                                <img src={currentData.challenge.multimedia.image.url} alt="Prueba" style={{ maxWidth: '100%', maxHeight: '500px', borderRadius: '15px', objectFit: 'contain', boxShadow: '0 10px 25px rgba(0,0,0,0.5)' }} />
+                                                <h4 style={{ marginBottom: '5px', opacity: 0.8, fontSize: '1rem' }}><FaImage /> Imagen Adjunta</h4>
+                                                <img src={currentData.challenge.multimedia.image.url} alt="Prueba" style={{ maxWidth: '100%', maxHeight: '50vh', borderRadius: '10px', objectFit: 'contain', boxShadow: '0 5px 15px rgba(0,0,0,0.5)' }} />
                                             </div>
                                         )}
 
                                         {/* Video */}
                                         {currentData.challenge.multimedia.video && (
-                                            <div style={{ width: '100%', maxWidth: '800px', marginTop: '20px' }}>
-                                                <h4 style={{ marginBottom: '10px', textAlign: 'center', opacity: 0.8 }}><FaVideo /> Video Adjunto</h4>
+                                            <div style={{ width: '100%', maxWidth: '800px', marginTop: '10px' }}>
+                                                <h4 style={{ marginBottom: '5px', textAlign: 'center', opacity: 0.8, fontSize: '1rem' }}><FaVideo /> Video Adjunto</h4>
 
                                                 {currentData.challenge.multimedia.video.isYoutube ? (
                                                     // Try Embed first, fallback to Link
@@ -901,22 +957,22 @@ const GameMode = () => {
                                                             />
                                                         </div>
                                                     ) : (
-                                                        <div style={{ textAlign: 'center', padding: '30px', background: 'rgba(0,0,0,0.2)', borderRadius: '15px' }}>
-                                                            <p style={{ marginBottom: '20px' }}>No se pudo incrustar el video. Ábrelo directamente:</p>
-                                                            <a href={currentData.challenge.multimedia.video.url} target="_blank" rel="noopener noreferrer" className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '10px', textDecoration: 'none', padding: '15px 30px', fontSize: '1.2rem' }}>
+                                                        <div style={{ textAlign: 'center', padding: '20px', background: 'rgba(0,0,0,0.2)', borderRadius: '15px' }}>
+                                                            <p style={{ marginBottom: '10px', fontSize: '0.9rem' }}>No se pudo incrustar el video. Ábrelo directamente:</p>
+                                                            <a href={currentData.challenge.multimedia.video.url} target="_blank" rel="noopener noreferrer" className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', textDecoration: 'none', padding: '10px 20px', fontSize: '1rem' }}>
                                                                 <FaPlay /> VER VIDEO
                                                             </a>
                                                         </div>
                                                     )
                                                 ) : (
-                                                    <video controls src={currentData.challenge.multimedia.video.url} style={{ width: '100%', maxHeight: '500px', borderRadius: '15px', backgroundColor: '#000', boxShadow: '0 10px 25px rgba(0,0,0,0.5)' }} />
+                                                    <video controls src={currentData.challenge.multimedia.video.url} style={{ width: '100%', maxHeight: '50vh', borderRadius: '15px', backgroundColor: '#000', boxShadow: '0 10px 25px rgba(0,0,0,0.5)' }} />
                                                 )}
                                             </div>
                                         )}
 
                                         {/* Document */}
                                         {currentData.challenge.multimedia.document && (
-                                            <a href={currentData.challenge.multimedia.document.url} target="_blank" rel="noopener noreferrer" className="btn-secondary" style={{ width: '100%', maxWidth: '400px', textAlign: 'center', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', padding: '15px', fontSize: '1.2rem', marginTop: '20px' }}>
+                                            <a href={currentData.challenge.multimedia.document.url} target="_blank" rel="noopener noreferrer" className="btn-secondary" style={{ width: '100%', maxWidth: '400px', textAlign: 'center', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', padding: '12px', fontSize: '1rem', marginTop: '10px' }}>
                                                 <FaList /> <span>Ver Documento Adjunto</span>
                                             </a>
                                         )}
@@ -928,6 +984,7 @@ const GameMode = () => {
 
                     {status === 'PLAYING_CHALLENGE' && (
                         <div className="animate-fade-in">
+                            {game?.name && <h3 style={{ color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '2px', opacity: 0.7, marginBottom: '20px', fontSize: '1.2rem' }}>{game.name}</h3>}
                             <h2>¡Tiempo Restante!</h2>
                             <div className="countdown-text" style={{ fontSize: '12rem', color: countdown <= 10 ? '#ef4444' : 'var(--text-light)' }}>
                                 {countdown}

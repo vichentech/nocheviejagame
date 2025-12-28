@@ -11,6 +11,16 @@ export const AuthProvider = ({ children }) => {
     const [token, setToken] = useState(sessionStorage.getItem('token'));
     const [loading, setLoading] = useState(true);
 
+    const fetchGameData = async () => {
+        try {
+            const res = await axios.get('/api/game/current');
+            setGame(res.data);
+            sessionStorage.setItem('gameInfo', JSON.stringify({ id: res.data._id, name: res.data.name })); // Keep basic info in session defaults
+        } catch (err) {
+            console.error("Error fetching game data", err);
+        }
+    };
+
     // Initial auth check
     useEffect(() => {
         const checkAuth = async () => {
@@ -27,6 +37,10 @@ export const AuthProvider = ({ children }) => {
                         const userData = res.data;
                         if (!userData.id && userData._id) userData.id = userData._id;
                         setUser(userData);
+
+                        // Valid Token & Game -> Fetch Full Game Config
+                        fetchGameData();
+
                     } catch (err) {
                         // If token invalid, clear it
                         console.error("Token verification failed", err);
@@ -114,7 +128,7 @@ export const AuthProvider = ({ children }) => {
     };
 
     return (
-        <AuthContext.Provider value={{ user, game, loginGame, registerGame, loginUser, registerUser, loginAdmin, logoutGame, logoutUser, loading }}>
+        <AuthContext.Provider value={{ user, game, loginGame, registerGame, loginUser, registerUser, loginAdmin, logoutGame, logoutUser, loading, fetchGameData }}>
             {children}
         </AuthContext.Provider>
     );

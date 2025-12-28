@@ -6,7 +6,7 @@ import { FaPlay, FaPause, FaStop, FaPlus, FaSignOutAlt, FaCrown, FaUser, FaSave,
 import Modal from '../components/Modal';
 
 const Dashboard = () => {
-    const { user, game, logoutUser, logoutGame } = useAuth();
+    const { user, game, logoutUser, logoutGame, fetchGameData } = useAuth();
     const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState('challenges');
     const [challenges, setChallenges] = useState([]);
@@ -53,11 +53,18 @@ const Dashboard = () => {
         loadVoices();
         synthRef.current.onvoiceschanged = loadVoices;
 
-        // Load Config from LocalStorage (or defaults)
-        setConfigMinTime(localStorage.getItem('minTime') || 60);
-        setConfigMaxTime(localStorage.getItem('maxTime') || 300);
-        setConfigParticipants(localStorage.getItem('defaultParticipants') || 1);
-    }, []);
+        // Load Config from Game Context (Database) or Fallback
+        if (game?.config) {
+            setConfigMinTime(game.config.minTime || 60);
+            setConfigMaxTime(game.config.maxTime || 300);
+            setConfigParticipants(game.config.defaultParticipants || 1);
+        } else {
+            // Fallback to local storage or defaults if game config not loaded yet
+            setConfigMinTime(localStorage.getItem('minTime') || 60);
+            setConfigMaxTime(localStorage.getItem('maxTime') || 300);
+            setConfigParticipants(localStorage.getItem('defaultParticipants') || 1);
+        }
+    }, [game]); // Re-run when game context updates
 
     // Auto-select Spanish voice if 'default' and available
     useEffect(() => {
@@ -389,11 +396,19 @@ const Dashboard = () => {
         });
     };
 
-    const handleSaveGameConfig = () => {
-        localStorage.setItem('minTime', configMinTime);
-        localStorage.setItem('maxTime', configMaxTime);
-        localStorage.setItem('defaultParticipants', configParticipants);
-        showModal('Éxito', 'Configuración guardada correctamente.');
+    const handleSaveGameConfig = async () => {
+        try {
+            await axios.put('/api/family/game', {
+                minTime: configMinTime,
+                maxTime: configMaxTime,
+                defaultParticipants: configParticipants
+            });
+            await fetchGameData(); // Update global context immediately
+            showModal('Éxito', 'Configuración guardada en la base de datos.');
+        } catch (err) {
+            console.error(err);
+            showModal('Error', 'No se pudo guardar la configuración.');
+        }
     };
 
     // Open User Change Password (Self)

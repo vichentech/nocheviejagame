@@ -7,7 +7,12 @@ const gameSchema = new mongoose.Schema({
     playedUsers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     playedChallenges: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Challenge' }],
     usedRandomNumbers: [{ type: Number }], // Field to track used random numbers
-    adminUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' } // The Family Admin
+    adminUserId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // The Family Admin
+    config: {
+        minTime: { type: Number, default: 60 },
+        maxTime: { type: Number, default: 300 },
+        defaultParticipants: { type: Number, default: 1 }
+    }
 });
 
 module.exports = mongoose.model('Game', gameSchema);

@@ -7,6 +7,20 @@ const Audio = require('../models/Audio');
 const Game = require('../models/Game');
 const mongoose = require('mongoose');
 
+// @route   GET api/game/current
+// @desc    Get current game details (including config)
+// @access  Private
+router.get('/current', auth, async (req, res) => {
+    try {
+        const game = await Game.findById(req.user.gameId).select('-passwordHash');
+        if (!game) return res.status(404).json({ msg: 'Game not found' });
+        res.json(game);
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).send('Server error');
+    }
+});
+
 // @route   GET api/game/users
 // @desc    Get all users in the game with their challenge count
 // @access  Private
