@@ -128,16 +128,33 @@ const GameMode = () => {
         stopAllAudio();
     };
 
-    const speak = (text, voiceName, callback) => {
+    const speak = (text, voiceConfig, callback) => {
         if ('speechSynthesis' in window) {
             window.speechSynthesis.cancel(); // Always cancel previous
 
             const utterance = new SpeechSynthesisUtterance(text);
+
+            // Handle voiceConfig as object or string
+            let voiceName = 'default';
+            let rate = 1.0;
+            let pitch = 1.0;
+
+            if (voiceConfig && typeof voiceConfig === 'object') {
+                voiceName = voiceConfig.name || 'default';
+                rate = voiceConfig.rate || 1.0;
+                pitch = voiceConfig.pitch || 1.0;
+            } else if (typeof voiceConfig === 'string') {
+                voiceName = voiceConfig;
+            }
+
             if (voiceName && voiceName !== 'default') {
                 const voices = window.speechSynthesis.getVoices();
                 const selected = voices.find(v => v.name === voiceName);
                 if (selected) utterance.voice = selected;
             }
+
+            utterance.rate = rate;
+            utterance.pitch = pitch;
 
             utterance.onend = () => {
                 if (callback) callback();
@@ -191,7 +208,10 @@ const GameMode = () => {
             const res = await axios.get('/api/game/random');
             startChallengeFlow(res.data);
         } catch (err) {
-            console.error("Fetch error", err);
+            console.error("Fetch error full:", err);
+            if (err.response && err.response.data) {
+                console.error("Server Error Data:", err.response.data);
+            }
             speak("Error obteniendo prueba. Reintentando.", null, startNextGameCycle);
         }
     };
@@ -300,13 +320,30 @@ const GameMode = () => {
             const challenge = data.challenge;
             const victim = data.victim;
 
+            // Generate detailed description of player config
+            let playerConfigDesc = '';
+            if (challenge.playerConfig.targetType === 'random') {
+                const count = challenge.participants || 1;
+                playerConfigDesc = count === 1
+                    ? `Será elegido 1 jugador al azar.`
+                    : `Serán elegidos ${count} jugadores al azar.`;
+            } else if (challenge.playerConfig.targetType === 'forward') {
+                playerConfigDesc = `El jugador objetivo es el que está ${challenge.playerConfig.positionOffset || 1} posiciones por delante de ti.`;
+            } else if (challenge.playerConfig.targetType === 'even') {
+                playerConfigDesc = "Para todos los jugadores en posiciones pares.";
+            } else if (challenge.playerConfig.targetType === 'odd') {
+                playerConfigDesc = "Para todos los jugadores en posiciones impares.";
+            } else if (challenge.playerConfig.targetType === 'all') {
+                playerConfigDesc = "Esta prueba es para todos los jugadores.";
+            }
+
             const texts = [
                 `Atención. Reto para todos, propuesto por ${victim.username}.`,
                 `Título de la prueba: ${challenge.title}.`,
                 `Descripción: ${challenge.text}.`,
-                challenge.playerConfig.targetType === 'forward' ? `Jugador objetivo: el que está ${challenge.playerConfig.positionOffset || 1} posiciones por delante de ti.` : '',
+                playerConfigDesc, // Injected logic
                 challenge.playerConfig.ageRange !== 'all' ? `Rango de edad: ${challenge.playerConfig.ageRange === 'adults' ? 'Solo adultos' : challenge.playerConfig.ageRange === 'kids' ? 'Solo niños' : 'Adolescentes'}.` : '',
-                challenge.participants > 1 ? `Número de participantes: ${challenge.participants}.` : 'Juega un solo participante.',
+                // REMOVED Redundant participant count, covered by playerConfigDesc or context
                 challenge.playerConfig.grouping !== 'individual' ? `Agrupación: ${challenge.playerConfig.grouping === 'pairs' ? 'Por parejas' : 'Por tríos'}.` : '',
                 `Duración: ${challenge.durationType === 'untilNext' ? "Hasta la siguiente prueba." :
                     challenge.durationType === 'multiChallenge' ? `Durante las próximas ${challenge.durationLimit || 1} pruebas.` :
@@ -314,7 +351,7 @@ const GameMode = () => {
                             `${challenge.timeLimit} segundos.`
                 }`,
                 challenge.objects ? `Objetos necesarios: ${challenge.objects}.` : '',
-                challenge.punishment ? `Castigo si no se cumple: ${challenge.punishment}.` : '',
+                challenge.punishment ? `Atención al castigo: ${challenge.punishment}.` : '',
                 "¿Estáis listos? Pues a jugar."
             ].filter(t => t !== '');
 
@@ -494,8 +531,14 @@ const GameMode = () => {
                     </div>
 
                     <div style={{ display: 'flex', gap: '10px' }}>
-                        {status !== 'IDLE' && <button className="btn-secondary" onClick={stopAndReset} style={{ fontSize: '0.8rem' }}><FaStop /> RESET</button>}
-                        <button className="btn-danger" onClick={() => { stopAndReset(); navigate('/dashboard'); }} style={{ fontSize: '0.8rem' }}><FaStop /> SALIR</button>
+                        {status !== 'IDLE' && (
+                            <button className="btn-secondary" onClick={stopAndReset} style={{ fontSize: '0.9rem', borderColor: 'rgba(255,255,255,0.3)', color: 'rgba(255,255,255,0.8)' }}>
+                                <FaStop /> REINICIAR
+                            </button>
+                        )}
+                        <button className="btn-danger" onClick={() => { stopAndReset(); navigate('/dashboard'); }} style={{ fontSize: '0.9rem', background: 'rgba(220, 38, 38, 0.6)' }}>
+                            SALIR
+                        </button>
                     </div>
                 </div>
 
@@ -536,7 +579,7 @@ const GameMode = () => {
                     {status === 'COUNTDOWN' && (
                         <div>
                             <h2>Próximo Reto en...</h2>
-                            <div className="countdown-text">{countdown}</div>
+                            <div className="countdown-text" style={{ fontSize: '10rem', lineHeight: 1 }}>{countdown}</div>
                             <p className="animate-pulse">Esperando...</p>
                         </div>
                     )}
@@ -682,7 +725,7 @@ const GameMode = () => {
                     {status === 'PLAYING_CHALLENGE' && (
                         <div>
                             <h2 style={{ color: '#ec4899' }}>¡EN CURSO!</h2>
-                            <div className="countdown-text" style={{ fontFamily: 'monospace' }}>
+                            <div className="countdown-text" style={{ fontFamily: 'monospace', fontSize: '10rem', lineHeight: 1 }}>
                                 {countdown}
                             </div>
                             <p style={{ fontSize: '1.2rem' }}>{currentData?.challenge?.title}</p>

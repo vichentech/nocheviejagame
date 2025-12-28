@@ -62,6 +62,31 @@ router.post('/', [auth, upload.single('file')], async (req, res) => {
     }
 });
 
+// @route   PUT api/audio/:id
+// @desc    Update audio details (duration)
+// @access  Private
+router.put('/:id', auth, async (req, res) => {
+    try {
+        const { duration } = req.body;
+        const audio = await Audio.findById(req.params.id);
+
+        if (!audio) return res.status(404).json({ msg: 'Audio not found' });
+
+        // Check ownership/permissions
+        if (audio.uploaderId.toString() !== req.user.id && req.user.role !== 'admin' && req.user.role !== 'family_admin') {
+            return res.status(401).json({ msg: 'Not authorized' });
+        }
+
+        if (duration) audio.duration = duration;
+
+        await audio.save();
+        res.json(audio);
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).send('Server error');
+    }
+});
+
 // @route   GET api/audio
 // @desc    Get all audio files for the game
 // @access  Private

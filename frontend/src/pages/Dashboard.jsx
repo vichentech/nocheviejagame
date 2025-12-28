@@ -90,7 +90,15 @@ const Dashboard = () => {
     const fetchAudios = async () => {
         try {
             const res = await axios.get('/api/audio');
-            setAudios(res.data);
+            // Check if response is array (some versions) or object (others)
+            const list = Array.isArray(res.data) ? res.data : res.data.audios || [];
+            setAudios(list);
+
+            // Sync slider to current user audio if exists
+            const myAudio = list.find(a => a.uploaderId === user.id);
+            if (myAudio && myAudio.duration) {
+                setAudioDuration(myAudio.duration);
+            }
         } catch (err) { console.error(err); }
     };
 
@@ -185,15 +193,15 @@ const Dashboard = () => {
     };
 
     // Updated Play Function to Read All Fields
+    // Updated Play Function to Read All Fields (Full Descriptive Mode)
     const handlePlayChallenge = (challenge) => {
         if (synthRef.current.speaking) {
             synthRef.current.cancel();
         }
 
-        const speakText = (text, delay = 0) => {
+        const speakText = (text) => {
             const utterance = new SpeechSynthesisUtterance(text);
 
-            // Normalize config if it's old string format
             let config = challenge.voiceConfig;
             if (typeof config === 'string') config = { name: config, rate: 1.0, pitch: 1.0 };
             if (!config) config = { name: 'default', rate: 1.0, pitch: 1.0 };
@@ -208,57 +216,44 @@ const Dashboard = () => {
             synthRef.current.speak(utterance);
         };
 
-        // Queue utterances
-        speakText(`Título: ${challenge.title}`);
-        speakText(`Descripción: ${challenge.text}`);
+        const c = challenge;
+        const pConfig = c.playerConfig || { targetType: 'all' };
 
-        // Player config reading logic
-        const pConfig = challenge.playerConfig || {};
-        const targetMap = { 'all': 'Todos', 'odd': 'Impares', 'even': 'Pares', 'random': 'Aleatorio', 'custom': 'Personalizado', 'forward': 'Posición Relativa' };
-
-        if (pConfig.targetType === 'forward') {
-            speakText(`Participante: Jugador a ${pConfig.positionOffset || 1} posiciones.`);
-        } else if (pConfig.targetType && pConfig.targetType !== 'all') {
-            speakText(`Jugadores: ${targetMap[pConfig.targetType] || pConfig.targetType}`);
-        }
-
-        if (pConfig.targetType === 'custom' && pConfig.customText) {
-            speakText(`Detalles: ${pConfig.customText}`);
-        }
-        if (pConfig.grouping && pConfig.grouping !== 'individual' && challenge.participants > 1) {
-            speakText(`Agrupación: ${pConfig.grouping === 'pairs' ? 'Por Parejas' : 'Por Tríos'}`);
-        }
-        if (pConfig.position && pConfig.position !== 'none' && pConfig.targetType !== 'forward') {
-            let posText = '';
-            switch (pConfig.position) {
-                case 'next': posText = 'Al lado'; break;
-                case 'opposite': posText = 'Enfrente'; break;
-                case 'left': posText = 'A la izquierda'; break;
-                case 'right': posText = 'A la derecha'; break;
-                case 'forward': posText = `${pConfig.positionOffset || 1} posiciones adelante`; break;
-            }
-            if (posText) speakText(`Posición: ${posText}`);
+        let playerConfigDesc = '';
+        if (pConfig.targetType === 'random') {
+            const count = c.participants || 1;
+            playerConfigDesc = count === 1
+                ? `Será elegido 1 jugador al azar.`
+                : `Serán elegidos ${count} jugadores al azar.`;
+        } else if (pConfig.targetType === 'forward') {
+            playerConfigDesc = `El jugador objetivo es el que está ${pConfig.positionOffset || 1} posiciones por delante.`;
+        } else if (pConfig.targetType === 'even') {
+            playerConfigDesc = "Para todos los jugadores en posiciones pares.";
+        } else if (pConfig.targetType === 'odd') {
+            playerConfigDesc = "Para todos los jugadores en posiciones impares.";
+        } else if (pConfig.targetType === 'all') {
+            playerConfigDesc = "Esta prueba es para todos los jugadores.";
         }
 
-        if (challenge.durationType === 'untilNext' || challenge.timeLimit === 0) {
-            speakText("Tiempo: Hasta la siguiente prueba");
-        } else if (challenge.durationType === 'multiChallenge' || challenge.timeLimit === -1) {
-            speakText(`Tiempo: Durante ${challenge.durationLimit || 1} pruebas`);
-        } else {
-            speakText(`Tiempo: ${challenge.timeLimit} segundos`);
-        }
-        if (challenge.objects) {
-            speakText(`Objetos necesarios: ${challenge.objects}`);
-        }
+        const fullText = [
+            `Título: ${c.title}.`,
+            `Descripción: ${c.text}.`,
+            playerConfigDesc,
+            pConfig.ageRange !== 'all' && pConfig.ageRange ? `Rango de edad: ${pConfig.ageRange === 'adults' ? 'Solo adultos' : pConfig.ageRange === 'kids' ? 'Solo niños' : 'Adolescentes'}.` : '',
+            // REMOVED Redundant participant count
+            (pConfig.grouping !== 'individual' && pConfig.grouping) ? `Agrupación: ${pConfig.grouping === 'pairs' ? 'Por parejas' : 'Por tríos'}.` : '',
+            `Duración: ${c.durationType === 'untilNext' ? "Hasta la siguiente prueba." :
+                c.durationType === 'multiChallenge' ? `Durante las próximas ${c.durationLimit || 1} pruebas.` :
+                    c.timeLimit === 0 ? "Indefinido." :
+                        `${c.timeLimit} segundos.`
+            }`,
+            c.objects ? `Objetos necesarios: ${c.objects}.` : '',
+            c.punishment ? `Castigo: ${c.punishment}.` : ''
+        ].filter(t => t && t !== '').join(' ');
 
-        if (challenge.rules) {
-            speakText(`Reglas adicionales: ${challenge.rules}`);
-        }
-
-        if (challenge.punishment) {
-            speakText(`Castigo: ${challenge.punishment}`);
-        }
+        speakText(fullText);
     };
+
 
     const handleMediaUpload = async (e, type) => {
         const file = e.target.files[0];
@@ -313,6 +308,21 @@ const Dashboard = () => {
                 fetchChallenges();
             } catch (err) { console.error(err); }
         });
+    };
+
+    const handleUpdateAudioDuration = async (id, duration) => {
+        try {
+            if (duration < 5 || duration > 30) {
+                showModal('Atención', 'La duración debe ser entre 5 y 30 segundos');
+                return;
+            }
+            await axios.put(`/api/audio/${id}`, { duration });
+            showModal('Éxito', 'Duración guardada correctamente');
+            fetchAudios();
+        } catch (err) {
+            console.error(err);
+            showModal('Error', 'No se pudo actualizar la duración');
+        }
     };
 
     const handleDeleteAudio = (id) => {
@@ -405,6 +415,46 @@ const Dashboard = () => {
     // Open Family Modal
     const openFamilySettings = () => {
         setShowFamilyModal(true);
+    };
+
+    // Generate Full Announcement Preview
+    const handleFullPreview = () => {
+        const c = newChallenge;
+
+        let playerConfigDesc = '';
+        if (c.playerConfig.targetType === 'random') {
+            const count = c.participants || 1;
+            playerConfigDesc = count === 1
+                ? `Será elegido 1 jugador al azar.`
+                : `Serán elegidos ${count} jugadores al azar.`;
+        } else if (c.playerConfig.targetType === 'forward') {
+            playerConfigDesc = `El jugador objetivo es el que está ${c.playerConfig.positionOffset || 1} posiciones por delante.`;
+        } else if (c.playerConfig.targetType === 'even') {
+            playerConfigDesc = "Para todos los jugadores en posiciones pares.";
+        } else if (c.playerConfig.targetType === 'odd') {
+            playerConfigDesc = "Para todos los jugadores en posiciones impares.";
+        } else if (c.playerConfig.targetType === 'all') {
+            playerConfigDesc = "Esta prueba es para todos los jugadores.";
+        }
+
+        const fullText = [
+            `Atención. Reto para todos.`,
+            `Título: ${c.title}.`,
+            `Descripción: ${c.text}.`,
+            playerConfigDesc,
+            c.playerConfig.ageRange !== 'all' ? `Rango de edad: ${c.playerConfig.ageRange === 'adults' ? 'Solo adultos' : c.playerConfig.ageRange === 'kids' ? 'Solo niños' : 'Adolescentes'}.` : '',
+            // REMOVED Redundant participant count
+            c.playerConfig.grouping !== 'individual' ? `Agrupación: ${c.playerConfig.grouping === 'pairs' ? 'Por parejas' : 'Por tríos'}.` : '',
+            `Duración: ${c.durationType === 'untilNext' ? "Hasta la siguiente prueba." :
+                c.durationType === 'multiChallenge' ? `Durante las próximas ${c.durationLimit || 1} pruebas.` :
+                    c.timeLimit === 0 ? "Indefinido." :
+                        `${c.timeLimit} segundos.`
+            }`,
+            c.objects ? `Objetos necesarios: ${c.objects}.` : '',
+            c.punishment ? `Castigo: ${c.punishment}.` : ''
+        ].filter(t => t && t !== '').join(' ');
+
+        previewSpeak(fullText, c.voiceConfig);
     };
 
     // TTS Preview (Form Button)
@@ -989,6 +1039,7 @@ const Dashboard = () => {
 
                         {/* Footer Actions */}
                         <div style={{ display: 'flex', gap: '10px', marginTop: '20px', flexWrap: 'wrap' }}>
+
                             {editingId && (
                                 <button type="button" className="btn-secondary" onClick={() => { resetForm(); setActiveTab('challenges'); }} style={{ flex: 1 }}>
                                     Cancelar
@@ -1009,18 +1060,7 @@ const Dashboard = () => {
                                 <input type="file" className="glass-input" accept="audio/*" onChange={e => setAudioFile(e.target.files[0])} />
                             </div>
 
-                            <div style={{ flex: '1 0 150px' }}>
-                                <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '5px' }}>
-                                    <span>Duración</span>
-                                    <span>{audioDuration}s</span>
-                                </label>
-                                <input
-                                    type="range" min="5" max="30" step="1"
-                                    value={audioDuration}
-                                    onChange={e => setAudioDuration(parseInt(e.target.value))}
-                                    style={{ width: '100%', accentColor: 'var(--secondary)' }}
-                                />
-                            </div>
+
 
                             <button type="submit" className="btn-primary" disabled={!audioFile} style={{ flex: '1 0 100px' }}>Subir Himno</button>
                             <div style={{ width: '100%', textAlign: 'center' }}>
@@ -1031,7 +1071,32 @@ const Dashboard = () => {
                             {audios.map(a => (
                                 <div key={a._id} className="glass-panel" style={{ padding: '15px', background: 'rgba(255,255,255,0.05)' }}>
                                     <p style={{ marginBottom: '5px', wordBreak: 'break-all', fontWeight: 'bold' }}>{a.originalName}</p>
-                                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '10px' }}>Duración: {a.duration || 30}s</p>
+                                    <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '10px' }}>Duración por defecto: {a.duration || 30}s</p>
+
+                                    {(a.uploaderId === user.id) && (
+                                        <div style={{ marginBottom: '10px', display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                            <input
+                                                type="range" min="5" max="30"
+                                                step="1"
+                                                style={{ width: '100px', accentColor: 'var(--secondary)' }}
+                                                defaultValue={a.duration || 30}
+                                                id={`dur-${a._id}`}
+                                                onInput={(e) => document.getElementById(`val-${a._id}`).innerText = e.target.value + 's'}
+                                            />
+                                            <span id={`val-${a._id}`} style={{ fontSize: '0.8rem', width: '30px', textAlign: 'center' }}>{a.duration || 30}s</span>
+                                            <button
+                                                className="btn-secondary"
+                                                style={{ padding: '2px 8px', fontSize: '0.8rem' }}
+                                                onClick={() => {
+                                                    const val = document.getElementById(`dur-${a._id}`).value;
+                                                    handleUpdateAudioDuration(a._id, parseInt(val));
+                                                }}
+                                            >
+                                                Guardar
+                                            </button>
+                                        </div>
+                                    )}
+
                                     <audio controls style={{ width: '100%' }}>
                                         <source src={`/uploads/${a.filename}`} type="audio/mpeg" />
                                     </audio>
