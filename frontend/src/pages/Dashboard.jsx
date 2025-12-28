@@ -20,6 +20,11 @@ const Dashboard = () => {
     const [familyUsers, setFamilyUsers] = useState([]);
     const [showFamilyModal, setShowFamilyModal] = useState(false);
 
+    // Game Config State (Admin)
+    const [configMinTime, setConfigMinTime] = useState(60);
+    const [configMaxTime, setConfigMaxTime] = useState(300);
+    const [configParticipants, setConfigParticipants] = useState(1);
+
     // Form States
     const [newChallenge, setNewChallenge] = useState({
         title: '', text: '', timeLimit: 60,
@@ -47,6 +52,11 @@ const Dashboard = () => {
         };
         loadVoices();
         synthRef.current.onvoiceschanged = loadVoices;
+
+        // Load Config from LocalStorage (or defaults)
+        setConfigMinTime(localStorage.getItem('minTime') || 60);
+        setConfigMaxTime(localStorage.getItem('maxTime') || 300);
+        setConfigParticipants(localStorage.getItem('defaultParticipants') || 1);
     }, []);
 
     // Auto-select Spanish voice if 'default' and available
@@ -379,6 +389,13 @@ const Dashboard = () => {
         });
     };
 
+    const handleSaveGameConfig = () => {
+        localStorage.setItem('minTime', configMinTime);
+        localStorage.setItem('maxTime', configMaxTime);
+        localStorage.setItem('defaultParticipants', configParticipants);
+        showModal('Éxito', 'Configuración guardada correctamente.');
+    };
+
     // Open User Change Password (Self)
     const openChangePassword = () => {
         const PasswordForm = () => {
@@ -561,6 +578,25 @@ const Dashboard = () => {
                         </div>
                     </div>
 
+                    <div style={{ marginBottom: '20px' }}>
+                        <h4 style={{ borderBottom: '1px solid gray', paddingBottom: '5px' }}>Configuración Partida</h4>
+                        <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+                            <div style={{ flex: 1 }}>
+                                <label style={{ fontSize: '0.8rem', color: 'gray' }}>Tiempo Mín (s)</label>
+                                <input className="glass-input" type="number" value={configMinTime} onChange={e => setConfigMinTime(e.target.value)} style={{ textAlign: 'center' }} />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                                <label style={{ fontSize: '0.8rem', color: 'gray' }}>Tiempo Máx (s)</label>
+                                <input className="glass-input" type="number" value={configMaxTime} onChange={e => setConfigMaxTime(e.target.value)} style={{ textAlign: 'center' }} />
+                            </div>
+                        </div>
+                        <div style={{ marginBottom: '10px' }}>
+                            <label style={{ fontSize: '0.8rem', color: 'gray' }}>Participantes)</label>
+                            <input className="glass-input" type="number" value={configParticipants} onChange={e => setConfigParticipants(e.target.value)} style={{ textAlign: 'center', width: '100%' }} />
+                        </div>
+                        <button className="btn-secondary" style={{ width: '100%' }} onClick={handleSaveGameConfig}><FaSave /> Guardar Tiempos y Participantes</button>
+                    </div>
+
                     <div style={{ borderTop: '1px solid #ef4444', paddingTop: '10px' }}>
                         <button className="btn-danger" style={{ width: '100%' }} onClick={handleDeleteGame}>
                             <FaTrash /> BORRAR JUEGO ENTERO
@@ -633,13 +669,13 @@ const Dashboard = () => {
                                 <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
                                     <span style={{ fontSize: '0.8rem' }}>⏱ {c.timeLimit === 0 ? '∞' : c.timeLimit + 's'}</span>
 
-                                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
-                                        <button className="btn-secondary" style={{ padding: '8px 12px' }} onClick={() => handlePlayChallenge(c)} title="Reproducir"><FaPlay /></button>
-                                        <button className="btn-secondary" style={{ padding: '8px 12px', color: '#06b6d4' }} onClick={stopSpeak} title="Parar Audio"><FaStop /></button>
+                                    <div style={{ display: 'flex', gap: '5px', flexWrap: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
+                                        <button className="btn-secondary" style={{ padding: '6px 10px' }} onClick={() => handlePlayChallenge(c)} title="Reproducir"><FaPlay /></button>
+                                        <button className="btn-secondary" style={{ padding: '6px 10px', color: '#06b6d4' }} onClick={stopSpeak} title="Parar Audio"><FaStop /></button>
                                         {(c.uploaderId === user.id || user.role === 'admin' || user.role === 'family_admin') && (
                                             <>
-                                                <button className="btn-secondary" style={{ padding: '8px 12px' }} onClick={() => handleEditChallenge(c)} title="Editar"><FaEdit /></button>
-                                                <button className="btn-danger" style={{ padding: '8px 12px' }} onClick={() => handleDeleteChallenge(c._id)} title="Borrar"><FaTrash /></button>
+                                                <button className="btn-secondary" style={{ padding: '6px 10px' }} onClick={() => handleEditChallenge(c)} title="Editar"><FaEdit /></button>
+                                                <button className="btn-danger" style={{ padding: '6px 10px' }} onClick={() => handleDeleteChallenge(c._id)} title="Borrar"><FaTrash /></button>
                                             </>
                                         )}
                                     </div>
@@ -943,7 +979,12 @@ const Dashboard = () => {
                                                         <button type="button" className="btn-danger" onClick={() => setNewChallenge({ ...newChallenge, multimedia: { ...newChallenge.multimedia, audio: null } })} title="Borrar Audio"><FaTrash /></button>
                                                     )}
                                                 </div>
-                                                {newChallenge.multimedia?.audio?.url && <div style={{ marginTop: '5px', color: '#4ade80' }}>✓ {newChallenge.multimedia.audio.filename}</div>}
+                                                {newChallenge.multimedia?.audio?.url && (
+                                                    <div style={{ marginTop: '10px' }}>
+                                                        <div style={{ marginTop: '5px', color: '#4ade80', marginBottom: '5px' }}>✓ {newChallenge.multimedia.audio.filename}</div>
+                                                        <audio controls src={newChallenge.multimedia.audio.url} style={{ width: '100%' }} />
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
 
@@ -957,10 +998,15 @@ const Dashboard = () => {
                                                         <button type="button" className="btn-danger" onClick={() => setNewChallenge({ ...newChallenge, multimedia: { ...newChallenge.multimedia, video: null } })} title="Borrar Video"><FaTrash /></button>
                                                     )}
                                                 </div>
-                                                {newChallenge.multimedia?.video?.url && !newChallenge.multimedia.video.isYoutube && <div style={{ marginTop: '-10px', marginBottom: '15px', color: '#4ade80' }}>✓ {newChallenge.multimedia.video.filename}</div>}
+                                                {newChallenge.multimedia?.video?.url && !newChallenge.multimedia.video.isYoutube && (
+                                                    <div style={{ marginTop: '-10px', marginBottom: '15px' }}>
+                                                        <div style={{ color: '#4ade80', marginBottom: '5px' }}>✓ {newChallenge.multimedia.video.filename}</div>
+                                                        <video controls src={newChallenge.multimedia.video.url} style={{ width: '100%', maxHeight: '200px', borderRadius: '8px' }} />
+                                                    </div>
+                                                )}
 
                                                 <label style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '5px' }}><FaYoutube color="red" /> O Enlace</label>
-                                                <div style={{ display: 'flex', gap: '10px' }}>
+                                                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                                                     <input
                                                         type="text" className="glass-input" placeholder="https://..."
                                                         value={newChallenge.multimedia?.video?.isYoutube ? newChallenge.multimedia.video.url : ''}
@@ -974,7 +1020,10 @@ const Dashboard = () => {
                                                         }}
                                                     />
                                                     {newChallenge.multimedia?.video?.isYoutube && (
-                                                        <button type="button" className="btn-danger" onClick={() => setNewChallenge({ ...newChallenge, multimedia: { ...newChallenge.multimedia, video: null } })}><FaTrash /></button>
+                                                        <>
+                                                            <a href={newChallenge.multimedia.video.url} target="_blank" rel="noopener noreferrer" className="btn-secondary" title="Abrir Enlace" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}><FaPlay /></a>
+                                                            <button type="button" className="btn-danger" onClick={() => setNewChallenge({ ...newChallenge, multimedia: { ...newChallenge.multimedia, video: null } })}><FaTrash /></button>
+                                                        </>
                                                     )}
                                                 </div>
                                             </div>

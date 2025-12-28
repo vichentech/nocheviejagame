@@ -93,6 +93,7 @@ const Landing = () => {
                         <ul style={{ paddingLeft: '20px', marginTop: '5px', listStyleType: 'disc' }}>
                             <li>Gestionar usuarios y activar la partida.</li>
                             <li><strong>Modo Manual</strong>: Solo el admin puede jugar en modo manual para elegir pruebas específicas de jugadores.</li>
+                            <li><strong>Control Total</strong>: Puede cambiar los tiempos de juego y el número de Participantes para los sorteos.</li>
                         </ul>
                     </section>
 

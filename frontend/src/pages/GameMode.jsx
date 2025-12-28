@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { FaPlay, FaPause, FaStop, FaForward, FaClock, FaMusic, FaRedo, FaUser, FaList } from 'react-icons/fa';
+import { FaPlay, FaPause, FaStop, FaForward, FaClock, FaMusic, FaRedo, FaUser, FaList, FaImage, FaVideo } from 'react-icons/fa';
 
 const GameMode = () => {
     const { user, game } = useAuth();
@@ -12,7 +12,7 @@ const GameMode = () => {
     const [minTime, setMinTime] = useState(localStorage.getItem('minTime') || 60);
     const [maxTime, setMaxTime] = useState(localStorage.getItem('maxTime') || 300);
     const [isManualMode, setIsManualMode] = useState(false);
-    const isFamilyAdmin = user?.role === 'family_admin';
+    const isFamilyAdmin = user?.role === 'family_admin' || user?.role === 'admin';
 
     // Ensure non-admins are always in Auto mode
     useEffect(() => {
@@ -46,12 +46,23 @@ const GameMode = () => {
     const sfxRef = useRef(null); // For challenge specific SFX
     const wakeLockRef = useRef(null);
     const announceTimeoutRef = useRef(null); // New ref to handle the 1s delay timeout
+    const timerRef = useRef(null);
+    const isFetchingRef = useRef(false);
 
     // Random Generator State
     const [usedRandomNumbers, setUsedRandomNumbers] = useState([]);
     const [generatedNumbers, setGeneratedNumbers] = useState([]);
     const [randomMax, setRandomMax] = useState(10);
     const [pendingRandomData, setPendingRandomData] = useState(null);
+    const [challengeTab, setChallengeTab] = useState('info'); // 'info' | 'media'
+    const [numWinners, setNumWinners] = useState(parseInt(localStorage.getItem('defaultParticipants')) || 1); // Allow Admin to override participants count. Read from global config.
+
+    const getYoutubeId = (url) => {
+        if (!url) return null;
+        const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+        const match = url.match(regExp);
+        return (match && match[2].length === 11) ? match[2] : null;
+    };
 
 
     useEffect(() => {
@@ -175,6 +186,11 @@ const GameMode = () => {
     // 1. Start Countdown to Next Challenge
     const startNextGameCycle = () => {
         stopAllAudio();
+
+        // Clear existing interval to prevent race conditions
+        if (timerRef.current) clearInterval(timerRef.current);
+        if (timerId) clearInterval(timerId); // Fallback for state
+
         const config = validateAndSaveConfig();
 
         setStatus('COUNTDOWN');
@@ -199,11 +215,15 @@ const GameMode = () => {
                 return prev - 1;
             });
         }, 1000);
+
+        timerRef.current = id;
         setTimerId(id);
     };
 
     // 2a. Automatic Fetch
     const fetchAndStartChallenge = async () => {
+        if (isFetchingRef.current) return;
+        isFetchingRef.current = true;
         try {
             const res = await axios.get('/api/game/random');
             startChallengeFlow(res.data);
@@ -213,6 +233,8 @@ const GameMode = () => {
                 console.error("Server Error Data:", err.response.data);
             }
             speak("Error obteniendo prueba. Reintentando.", null, startNextGameCycle);
+        } finally {
+            isFetchingRef.current = false;
         }
     };
 
@@ -235,7 +257,7 @@ const GameMode = () => {
     };
 
     const generateRandomNumbers = () => {
-        const needed = currentData.challenge.participants || 1;
+        const needed = numWinners || 1;
         const max = randomMax;
 
         // Calculate available in [1..max]
@@ -267,6 +289,7 @@ const GameMode = () => {
 
     // Common Flow Start
     const startChallengeFlow = (data) => {
+        stopAllAudio();
         setCurrentData(data);
 
         // Play Music
@@ -276,15 +299,27 @@ const GameMode = () => {
         setPendingRandomData(null);
         setRandomMax(manualUsers.length > 0 ? manualUsers.length : 10);
 
-        // Max 30s for hymn, or use defined duration
-        const duration = Math.min((data.music && data.music.duration) ? data.music.duration : 30, 30);
+        // Max 30s for hymn, or use defined duration from user profile
+        let durationRaw = 30;
+        if (data.music && data.music.duration) {
+            durationRaw = parseInt(data.music.duration);
+        }
+        const duration = Math.min(isNaN(durationRaw) ? 30 : durationRaw, 30);
+
+        console.log(`Playing hymn for ${duration} seconds (Source: ${data.music ? 'Profile' : 'Default'})`);
+
         setMusicTimer(duration);
         setIsPlayingAudio(true);
 
         if (data.music && data.music.filename) {
+            console.log("Playing Audio File:", data.music.filename);
+            if (musicRef.current) musicRef.current.pause();
             musicRef.current = new Audio(`/uploads/${data.music.filename}`);
             musicRef.current.play().catch(e => console.log("Audio play error", e));
         }
+
+        // Initialize Num Winners
+        setNumWinners(data.challenge?.participants || 1);
 
         // Countdown 15s for music
         const musId = setInterval(() => {
@@ -320,6 +355,38 @@ const GameMode = () => {
             const challenge = data.challenge;
             const victim = data.victim;
 
+            // --- AUTO GENERATE RANDOM NUMBERS ---
+            let randomNumbersText = '';
+            if (challenge.playerConfig.targetType === 'random') {
+                const needed = challenge.participants || 1;
+                const max = randomMax; // Use current randomMax state
+
+                const allInMax = Array.from({ length: max }, (_, i) => i + 1);
+                let available = allInMax.filter(n => !usedRandomNumbers.includes(n));
+                let resetRangeMax = null;
+
+                if (available.length < needed) {
+                    available = allInMax;
+                    resetRangeMax = max;
+                }
+
+                const picked = [];
+                let currentPool = [...available];
+                for (let i = 0; i < needed; i++) {
+                    if (currentPool.length === 0) break;
+                    const idx = Math.floor(Math.random() * currentPool.length);
+                    picked.push(currentPool[idx]);
+                    currentPool.splice(idx, 1);
+                }
+
+                // Update State so they appear on screen instantly
+                setGeneratedNumbers(picked);
+                setPendingRandomData({ numbers: picked, resetRangeMax });
+
+                randomNumbersText = `Los números seleccionados son: ${picked.join(', ')}. Repito: ${picked.join(', ')}.`;
+            }
+            // ------------------------------------
+
             // Generate detailed description of player config
             let playerConfigDesc = '';
             if (challenge.playerConfig.targetType === 'random') {
@@ -341,9 +408,10 @@ const GameMode = () => {
                 `Atención. Reto para todos, propuesto por ${victim.username}.`,
                 `Título de la prueba: ${challenge.title}.`,
                 `Descripción: ${challenge.text}.`,
-                playerConfigDesc, // Injected logic
+                playerConfigDesc,
+                randomNumbersText, // Inserted here
                 challenge.playerConfig.ageRange !== 'all' ? `Rango de edad: ${challenge.playerConfig.ageRange === 'adults' ? 'Solo adultos' : challenge.playerConfig.ageRange === 'kids' ? 'Solo niños' : 'Adolescentes'}.` : '',
-                // REMOVED Redundant participant count, covered by playerConfigDesc or context
+                // REMOVED Redundant participant count
                 challenge.playerConfig.grouping !== 'individual' ? `Agrupación: ${challenge.playerConfig.grouping === 'pairs' ? 'Por parejas' : 'Por tríos'}.` : '',
                 `Duración: ${challenge.durationType === 'untilNext' ? "Hasta la siguiente prueba." :
                     challenge.durationType === 'multiChallenge' ? `Durante las próximas ${challenge.durationLimit || 1} pruebas.` :
@@ -456,6 +524,10 @@ const GameMode = () => {
         if (challenge.soundId && challenge.soundId.filename) {
             sfxRef.current = new Audio(`/uploads/${challenge.soundId.filename}`);
             sfxRef.current.play().catch(e => console.log(e));
+        } else if (challenge.multimedia && challenge.multimedia.audio && challenge.multimedia.audio.filename) {
+            // Auto-play attached audio if no specific SFX is set
+            sfxRef.current = new Audio(`/uploads/${challenge.multimedia.audio.filename}`);
+            sfxRef.current.play().catch(e => console.log("Multimedia Audio Play Error", e));
         }
 
         if (challenge.timeLimit > 0) {
@@ -548,7 +620,15 @@ const GameMode = () => {
                     {/* IDLE STATE */}
                     {status === 'IDLE' && (
                         <div className="animate-fade-in">
-                            <h1 style={{ marginBottom: '30px' }}>Configuración del Juego</h1>
+                            {/* NEW: Game Name Header */}
+                            {game?.name && (
+                                <h2 style={{ fontSize: '2rem', color: 'var(--primary)', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '2px' }}>
+                                    {game.name}
+                                </h2>
+                            )}
+                            <hr />
+                            <br />
+                            <h1 style={{ marginBottom: '30px' }}>Vamos a Jugar</h1>
 
                             {isFamilyAdmin && (
                                 <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'center', gap: '10px' }}>
@@ -557,17 +637,50 @@ const GameMode = () => {
                                 </div>
                             )}
 
-                            <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginBottom: '20px' }}>
-                                <div>
-                                    <label style={{ display: 'block', marginBottom: '10px' }}>Mínimo (seg)</label>
-                                    <input className="glass-input" type="number" value={minTime} onChange={e => setMinTime(e.target.value)} style={{ textAlign: 'center', fontSize: '1.5rem', width: '100px' }} />
-                                    <small style={{ display: 'block', color: 'gray' }}>Mín 60s</small>
+                            {isFamilyAdmin && (
+                                <div style={{ marginBottom: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
+                                    <label style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Intervalo de Tiempo (seg)</label>
+                                    <div style={{ display: 'flex', gap: '20px', justifyContent: 'center' }}>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                            <small>Mín</small>
+                                            <input
+                                                className="glass-input"
+                                                type="number"
+                                                value={minTime}
+                                                onChange={(e) => {
+                                                    const globalMin = parseInt(localStorage.getItem('minTime')) || 60;
+                                                    const globalMax = parseInt(localStorage.getItem('maxTime')) || 300;
+                                                    let val = parseInt(e.target.value);
+                                                    if (isNaN(val)) val = globalMin;
+                                                    if (val < globalMin) val = globalMin;
+                                                    if (val > maxTime) val = maxTime;
+                                                    setMinTime(val);
+                                                }}
+                                                style={{ textAlign: 'center', width: '80px', fontSize: '1.2rem' }}
+                                            />
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                                            <small>Máx</small>
+                                            <input
+                                                className="glass-input"
+                                                type="number"
+                                                value={maxTime}
+                                                onChange={(e) => {
+                                                    const globalMin = parseInt(localStorage.getItem('minTime')) || 60;
+                                                    const globalMax = parseInt(localStorage.getItem('maxTime')) || 300;
+                                                    let val = parseInt(e.target.value);
+                                                    if (isNaN(val)) val = globalMax;
+                                                    if (val > globalMax) val = globalMax;
+                                                    if (val < minTime) val = minTime;
+                                                    setMaxTime(val);
+                                                }}
+                                                style={{ textAlign: 'center', width: '80px', fontSize: '1.2rem' }}
+                                            />
+                                        </div>
+                                    </div>
+                                    <small style={{ color: 'gray', fontSize: '0.7rem' }}>Límites Globales: {localStorage.getItem('minTime') || 60}s - {localStorage.getItem('maxTime') || 300}s</small>
                                 </div>
-                                <div>
-                                    <label style={{ display: 'block', marginBottom: '10px' }}>Máximo (seg)</label>
-                                    <input className="glass-input" type="number" value={maxTime} onChange={e => setMaxTime(e.target.value)} style={{ textAlign: 'center', fontSize: '1.5rem', width: '100px' }} />
-                                </div>
-                            </div>
+                            )}
 
                             <button className="btn-primary btn-xl" onClick={startNextGameCycle}>
                                 <FaPlay /> CONTINUAR
@@ -650,102 +763,198 @@ const GameMode = () => {
                     )}
 
                     {(status === 'ANNOUNCING' || status === 'READY_TO_PLAY') && (
-                        <div className="animate-fade-in">
+                        <div className="animate-fade-in" style={{ maxWidth: '1000px', width: '95%', margin: '0 auto' }}>
                             <h5 style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Jugador que Propone:</h5>
                             <h2 style={{ color: 'var(--secondary)', marginBottom: '15px', fontSize: '1.4rem' }}>{currentData?.victim?.username}</h2>
 
-                            <div style={{ border: '1px solid rgba(255,255,255,0.2)', padding: '15px', borderRadius: '10px', background: 'rgba(0,0,0,0.2)' }}>
-                                <h1 style={{ marginBottom: '10px', fontSize: '1.5rem' }}>{currentData?.challenge?.title}</h1>
-                                <p style={{ fontSize: '1.1rem', marginBottom: '15px', minHeight: '60px' }}>{currentData?.challenge?.text}</p>
+                            <div style={{ border: '1px solid rgba(255,255,255,0.2)', padding: '20px', borderRadius: '15px', background: 'rgba(0,0,0,0.3)', minHeight: '400px', display: 'flex', flexDirection: 'column' }}>
 
-                                {/* MULTIMEDIA DISPLAY */}
-                                {currentData?.challenge?.multimedia && currentData.challenge.multimedia.type !== 'none' && (
-                                    <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'center' }}>
-                                        {currentData.challenge.multimedia.type === 'image' && (
-                                            <img src={currentData.challenge.multimedia.url} alt="Prueba" style={{ maxWidth: '100%', maxHeight: '300px', borderRadius: '10px' }} />
-                                        )}
-                                        {currentData.challenge.multimedia.type === 'audio' && (
-                                            <audio controls src={currentData.challenge.multimedia.url} style={{ width: '100%' }} />
-                                        )}
-                                        {currentData.challenge.multimedia.type === 'video' && (
-                                            <video controls src={currentData.challenge.multimedia.url} style={{ maxWidth: '100%', maxHeight: '300px', borderRadius: '10px' }} />
-                                        )}
+                                {/* TABS HEADER */}
+                                {(currentData?.challenge?.multimedia?.image || currentData?.challenge?.multimedia?.video || currentData?.challenge?.multimedia?.document) && (
+                                    <div style={{ display: 'flex', gap: '15px', marginBottom: '20px', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '10px', justifyContent: 'center' }}>
+                                        <button
+                                            onClick={() => setChallengeTab('info')}
+                                            className="btn-text"
+                                            style={{
+                                                borderBottom: challengeTab === 'info' ? '3px solid var(--primary)' : '3px solid transparent',
+                                                color: challengeTab === 'info' ? 'white' : 'rgba(255,255,255,0.5)',
+                                                background: challengeTab === 'info' ? 'rgba(255,255,255,0.05)' : 'transparent',
+                                                padding: '10px 20px',
+                                                borderRadius: '8px 8px 0 0',
+                                                fontSize: '1.1rem',
+                                                fontWeight: challengeTab === 'info' ? 'bold' : 'normal',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '8px',
+                                                transition: 'all 0.2s'
+                                            }}
+                                        >
+                                            <FaList /> La Prueba
+                                        </button>
+                                        <button
+                                            onClick={() => setChallengeTab('media')}
+                                            className="btn-text"
+                                            style={{
+                                                borderBottom: challengeTab === 'media' ? '3px solid var(--primary)' : '3px solid transparent',
+                                                color: challengeTab === 'media' ? 'white' : 'rgba(255,255,255,0.5)',
+                                                background: challengeTab === 'media' ? 'rgba(255,255,255,0.05)' : 'transparent',
+                                                padding: '10px 20px',
+                                                borderRadius: '8px 8px 0 0',
+                                                fontSize: '1.1rem',
+                                                fontWeight: challengeTab === 'media' ? 'bold' : 'normal',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '8px',
+                                                transition: 'all 0.2s'
+                                            }}
+                                        >
+                                            <FaImage /> Multimedia <span className="badge" style={{ background: 'var(--primary)', fontSize: '0.7rem', marginLeft: '5px' }}>!</span>
+                                        </button>
                                     </div>
                                 )}
 
-                                {currentData?.challenge?.punishment && (
-                                    <div style={{ marginBottom: '15px', padding: '10px', background: 'rgba(255, 0, 0, 0.2)', borderRadius: '5px' }}>
-                                        <strong>💀 CASTIGO:</strong> {currentData.challenge.punishment}
-                                    </div>
-                                )}
+                                {/* INFO TAB CONTENT */}
+                                {(!((currentData?.challenge?.multimedia?.image || currentData?.challenge?.multimedia?.video || currentData?.challenge?.multimedia?.document)) || challengeTab === 'info') && (
+                                    <div className="animate-fade-in">
+                                        <h1 style={{ marginBottom: '15px', fontSize: '2rem', textAlign: 'center', color: '#fbbf24' }}>{currentData?.challenge?.title}</h1>
+                                        <p style={{ fontSize: '1.4rem', marginBottom: '25px', lineHeight: '1.6', whiteSpace: 'pre-wrap', textAlign: 'left' }}>{currentData?.challenge?.text}</p>
 
-                                {/* RANDOM NUMBER GENERATOR */}
-                                {currentData?.challenge?.playerConfig?.targetType === 'random' && (
-                                    <div style={{ margin: '20px 0', padding: '15px', background: 'rgba(255,255,255,0.1)', borderRadius: '10px' }}>
-                                        <h3 style={{ marginBottom: '10px' }}>🎲 Generar Números Aleatorios</h3>
-                                        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', justifyContent: 'center', marginBottom: '10px' }}>
-                                            <label>Máximo:</label>
-                                            <input type="number" className="glass-input" value={randomMax} onChange={(e) => setRandomMax(parseInt(e.target.value))} style={{ width: '80px', textAlign: 'center' }} />
-                                            <button className="btn-secondary" onClick={generateRandomNumbers}>GENERAR</button>
-                                        </div>
-                                        {generatedNumbers.length > 0 && (
-                                            <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: '#fbbf24', letterSpacing: '2px' }}>
-                                                {generatedNumbers.join(' - ')}
+                                        {/* Audio Player (Always Visible) */}
+                                        {currentData?.challenge?.multimedia?.audio && (
+                                            <div style={{ marginBottom: '20px', background: 'rgba(255,255,255,0.05)', padding: '15px', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '15px' }}>
+                                                <div style={{ background: 'var(--primary)', padding: '10px', borderRadius: '50%' }}><FaMusic /></div>
+                                                <div style={{ flex: 1 }}>
+                                                    <p style={{ fontSize: '0.9rem', marginBottom: '5px', opacity: 0.8 }}>Audio de la prueba (Suena al Jugar)</p>
+                                                    <audio controls src={currentData.challenge.multimedia.audio.url} style={{ width: '100%' }} />
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {currentData?.challenge?.punishment && (
+                                            <div style={{ marginBottom: '20px', padding: '15px', background: 'rgba(220, 38, 38, 0.15)', borderRadius: '8px', borderLeft: '5px solid #ef4444' }}>
+                                                <strong style={{ fontSize: '1.2rem', color: '#fca5a5' }}>💀 CASTIGO:</strong>
+                                                <p style={{ fontSize: '1.1rem', margin: '5px 0 0 0' }}>{currentData.challenge.punishment}</p>
+                                            </div>
+                                        )}
+
+                                        {/* RANDOM NUMBERS */}
+                                        {currentData?.challenge?.playerConfig?.targetType === 'random' && (
+                                            <div style={{ margin: '20px 0', padding: '20px', background: 'rgba(255,255,255,0.05)', borderRadius: '15px', border: '1px dashed rgba(255,255,255,0.2)' }}>
+                                                <h3 style={{ marginBottom: '15px', textAlign: 'center', color: 'var(--secondary)' }}>🎲 Sorteo Aleatorio</h3>
+                                                <div style={{ display: 'flex', gap: '15px', alignItems: 'center', justifyContent: 'center', marginBottom: '20px', flexWrap: 'wrap' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                        <label>Máx:</label>
+                                                        <input type="number" className="glass-input" value={randomMax} onChange={(e) => setRandomMax(parseInt(e.target.value))} style={{ width: '70px', textAlign: 'center', padding: '8px', fontSize: '1.1rem' }} disabled={!isFamilyAdmin} />
+                                                    </div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                        <label>Participantes:</label>
+                                                        <input type="number" className="glass-input" value={numWinners} onChange={(e) => setNumWinners(parseInt(e.target.value))} style={{ width: '70px', textAlign: 'center', padding: '8px', fontSize: '1.1rem' }} disabled={!isFamilyAdmin} />
+                                                    </div>
+                                                    {isFamilyAdmin && <button className="btn-secondary" onClick={generateRandomNumbers}>RE-GENERAR</button>}
+                                                </div>
+                                                {generatedNumbers.length > 0 && (
+                                                    <div style={{ fontSize: '2.5rem', fontWeight: 'bold', color: '#fbbf24', display: 'flex', flexWrap: 'wrap', gap: '15px', justifyContent: 'center' }}>
+                                                        {generatedNumbers.map((num, i) => (
+                                                            <div key={i} className="animate-bounce-in" style={{
+                                                                background: 'linear-gradient(135deg, rgba(0,0,0,0.4), rgba(0,0,0,0.2))',
+                                                                padding: '10px 20px',
+                                                                borderRadius: '12px',
+                                                                border: '2px solid rgba(251, 191, 36, 0.5)',
+                                                                boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
+                                                                minWidth: '60px',
+                                                                textAlign: 'center'
+                                                            }}>{num}</div>
+                                                        ))}
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                     </div>
                                 )}
 
-                                <div style={{ textAlign: 'left', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '15px', fontSize: '0.95rem', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '15px' }}>
-                                    <div><strong>👥 Participantes:</strong> {currentData?.challenge?.participants}</div>
-                                    <div><strong>⏱ Tiempo:</strong> {
-                                        currentData?.challenge?.durationType === 'untilNext' ? "Hasta Prox." :
-                                            currentData?.challenge?.durationType === 'multiChallenge' ? `Durante ${currentData?.challenge?.durationLimit} pruebas` :
-                                                currentData?.challenge?.timeLimit === 0 ? 'Indefinido' : currentData?.challenge?.timeLimit + 's'
-                                    }</div>
-                                    <div><strong>🎒 Objetos:</strong> {currentData?.challenge?.objects || 'Ninguno'}</div>
-                                    {currentData?.challenge?.playerConfig?.ageRange !== 'all' && (
-                                        <div><strong>🎂 Edad:</strong> {currentData.challenge.playerConfig.ageRange}</div>
-                                    )}
-                                    <div style={{ gridColumn: '1 / -1' }}><strong>📜 Reglas:</strong> {currentData?.challenge?.rules || 'Ninguna'}</div>
-                                </div>
-                            </div>
+                                {/* MEDIA TAB CONTENT */}
+                                {challengeTab === 'media' && (currentData?.challenge?.multimedia?.image || currentData?.challenge?.multimedia?.video || currentData?.challenge?.multimedia?.document) && (
+                                    <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px', alignItems: 'center', width: '100%', padding: '10px' }}>
 
-                            <div style={{ marginTop: '25px', display: 'flex', justifyContent: 'center', gap: '15px', alignItems: 'center', flexWrap: 'wrap' }}>
-                                <button className="btn-secondary" style={{ flex: 1, minWidth: '140px' }} onClick={skipChallenge}>
-                                    <FaForward /> Saltar
-                                </button>
-                                <button className="btn-primary btn-xl" style={{ flex: 2, minWidth: '200px' }} onClick={playChallenge} disabled={status === 'ANNOUNCING'}>
-                                    <FaPlay /> JUGAR
-                                </button>
+                                        {/* Image */}
+                                        {currentData.challenge.multimedia.image && (
+                                            <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                                <h4 style={{ marginBottom: '10px', opacity: 0.8 }}><FaImage /> Imagen Adjunta</h4>
+                                                <img src={currentData.challenge.multimedia.image.url} alt="Prueba" style={{ maxWidth: '100%', maxHeight: '500px', borderRadius: '15px', objectFit: 'contain', boxShadow: '0 10px 25px rgba(0,0,0,0.5)' }} />
+                                            </div>
+                                        )}
+
+                                        {/* Video */}
+                                        {currentData.challenge.multimedia.video && (
+                                            <div style={{ width: '100%', maxWidth: '800px', marginTop: '20px' }}>
+                                                <h4 style={{ marginBottom: '10px', textAlign: 'center', opacity: 0.8 }}><FaVideo /> Video Adjunto</h4>
+
+                                                {currentData.challenge.multimedia.video.isYoutube ? (
+                                                    // Try Embed first, fallback to Link
+                                                    getYoutubeId(currentData.challenge.multimedia.video.url) ? (
+                                                        <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0, overflow: 'hidden', borderRadius: '15px', boxShadow: '0 10px 25px rgba(0,0,0,0.5)' }}>
+                                                            <iframe
+                                                                src={`https://www.youtube.com/embed/${getYoutubeId(currentData.challenge.multimedia.video.url)}`}
+                                                                style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 0 }}
+                                                                allowFullScreen
+                                                                title="Video YouTube"
+                                                            />
+                                                        </div>
+                                                    ) : (
+                                                        <div style={{ textAlign: 'center', padding: '30px', background: 'rgba(0,0,0,0.2)', borderRadius: '15px' }}>
+                                                            <p style={{ marginBottom: '20px' }}>No se pudo incrustar el video. Ábrelo directamente:</p>
+                                                            <a href={currentData.challenge.multimedia.video.url} target="_blank" rel="noopener noreferrer" className="btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '10px', textDecoration: 'none', padding: '15px 30px', fontSize: '1.2rem' }}>
+                                                                <FaPlay /> VER VIDEO
+                                                            </a>
+                                                        </div>
+                                                    )
+                                                ) : (
+                                                    <video controls src={currentData.challenge.multimedia.video.url} style={{ width: '100%', maxHeight: '500px', borderRadius: '15px', backgroundColor: '#000', boxShadow: '0 10px 25px rgba(0,0,0,0.5)' }} />
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {/* Document */}
+                                        {currentData.challenge.multimedia.document && (
+                                            <a href={currentData.challenge.multimedia.document.url} target="_blank" rel="noopener noreferrer" className="btn-secondary" style={{ width: '100%', maxWidth: '400px', textAlign: 'center', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', padding: '15px', fontSize: '1.2rem', marginTop: '20px' }}>
+                                                <FaList /> <span>Ver Documento Adjunto</span>
+                                            </a>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
 
                     {status === 'PLAYING_CHALLENGE' && (
-                        <div>
-                            <h2 style={{ color: '#ec4899' }}>¡EN CURSO!</h2>
-                            <div className="countdown-text" style={{ fontFamily: 'monospace', fontSize: '10rem', lineHeight: 1 }}>
+                        <div className="animate-fade-in">
+                            <h2>¡Tiempo Restante!</h2>
+                            <div className="countdown-text" style={{ fontSize: '12rem', color: countdown <= 10 ? '#ef4444' : 'var(--text-light)' }}>
                                 {countdown}
                             </div>
-                            <p style={{ fontSize: '1.2rem' }}>{currentData?.challenge?.title}</p>
-                            {countdown === '∞' && (
-                                <button className="btn-primary" onClick={finishChallenge}>TERMINAR</button>
-                            )}
+                            <div style={{ marginTop: '20px' }}>
+                                <FaClock className="animate-spin-slow" style={{ fontSize: '3rem', opacity: 0.5 }} />
+                            </div>
+                            <button className="btn-secondary" onClick={finishChallenge} style={{ marginTop: '30px' }}>
+                                <FaStop /> Terminar Ahora
+                            </button>
                         </div>
                     )}
 
                     {status === 'FINISHED' && (
                         <div className="animate-fade-in">
-                            <h1 style={{ fontSize: '2.5rem', color: '#ec4899', marginBottom: '30px' }}>¡Tiempo Terminado!</h1>
-                            <button className="btn-primary btn-xl" onClick={startNextGameCycle}>
-                                <FaForward /> CONTINUAR
-                            </button>
+                            <h1 style={{ fontSize: '4rem', color: '#fbbf24', marginBottom: '30px' }}>¡PRUEBA FINALIZADA!</h1>
+                            <div style={{ display: 'flex', gap: '20px', justifyContent: 'center' }}>
+                                <button className="btn-primary btn-xl" onClick={startNextGameCycle}>
+                                    <FaForward /> SIGUIENTE RETO
+                                </button>
+                            </div>
                         </div>
                     )}
+
                 </div>
             </div>
-        </div>
+        </div >
     );
 };
 
