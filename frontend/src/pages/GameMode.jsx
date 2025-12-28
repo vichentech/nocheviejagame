@@ -96,7 +96,7 @@ const GameMode = () => {
     // Random Generator State
     const [usedRandomNumbers, setUsedRandomNumbers] = useState([]);
     const [generatedNumbers, setGeneratedNumbers] = useState([]);
-    const [randomMax, setRandomMax] = useState(10);
+    const [randomMax, setRandomMax] = useState(game?.config?.defaultParticipants || 10);
     const [pendingRandomData, setPendingRandomData] = useState(null);
     const [challengeTab, setChallengeTab] = useState('info'); // 'info' | 'media'
     const [numWinners, setNumWinners] = useState(game?.config?.defaultParticipants || 1); // Allow Admin to override participants count. Read from global config.
@@ -347,7 +347,7 @@ const GameMode = () => {
         // Reset Random State
         setGeneratedNumbers([]);
         setPendingRandomData(null);
-        setRandomMax(manualUsers.length > 0 ? manualUsers.length : 10);
+        setRandomMax(game?.config?.defaultParticipants || (manualUsers.length > 0 ? manualUsers.length : 10));
 
         // Max 30s for hymn, or use defined duration from user profile
         let durationRaw = 30;
@@ -550,7 +550,7 @@ const GameMode = () => {
     const resumeInstructions = () => window.speechSynthesis.resume();
 
     // 4. Play
-    const playChallenge = async () => {
+    const startChallenge = async () => {
         superStopAllAudio(); // Stop audio on play
 
         // Commit Random Numbers if generated
@@ -813,13 +813,13 @@ const GameMode = () => {
                     )}
 
                     {(status === 'ANNOUNCING' || status === 'READY_TO_PLAY') && (
-                        <div className="animate-fade-in" style={{ maxWidth: '100%', width: '100%', margin: '0 auto', padding: '0 5px' }}>
+                        <div className="animate-fade-in" style={{ maxWidth: '100%', width: '100%', margin: '0', padding: '0' }}>
                             {game?.name && <h3 style={{ color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '2px', opacity: 0.7, marginBottom: '10px', fontSize: '1rem', textAlign: 'center' }}>{game.name}</h3>}
 
-                            <h5 style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Jugador que Propone:</h5>
-                            <h2 style={{ color: 'var(--secondary)', marginBottom: '10px', fontSize: '1.2rem' }}>{currentData?.victim?.username}</h2>
+                            <h5 style={{ color: 'var(--text-muted)', fontSize: '0.8rem', padding: '0 10px' }}>Jugador que Propone:</h5>
+                            <h2 style={{ color: 'var(--secondary)', marginBottom: '10px', fontSize: '1.2rem', padding: '0 10px' }}>{currentData?.victim?.username}</h2>
 
-                            <div style={{ border: '1px solid rgba(255,255,255,0.2)', padding: '10px', borderRadius: '15px', background: 'rgba(0,0,0,0.3)', minHeight: '400px', display: 'flex', flexDirection: 'column' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', width: '100%' }}>
 
                                 {/* TABS HEADER */}
                                 {(currentData?.challenge?.multimedia?.image || currentData?.challenge?.multimedia?.video || currentData?.challenge?.multimedia?.document) && (
@@ -899,11 +899,7 @@ const GameMode = () => {
                                                 <h3 style={{ marginBottom: '10px', textAlign: 'center', color: 'var(--secondary)', fontSize: '1.2rem' }}>🎲 Sorteo Aleatorio</h3>
                                                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center', justifyContent: 'center', marginBottom: '15px', flexWrap: 'wrap' }}>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                                        <label style={{ fontSize: '0.9rem' }}>Máx:</label>
-                                                        <input type="number" className="glass-input" value={randomMax} onChange={(e) => setRandomMax(parseInt(e.target.value))} style={{ width: '60px', textAlign: 'center', padding: '5px', fontSize: '1rem' }} disabled={!isFamilyAdmin} />
-                                                    </div>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                                        <label style={{ fontSize: '0.9rem' }}>Ganadores:</label>
+                                                        <label style={{ fontSize: '0.9rem' }}>Participantes:</label>
                                                         <input type="number" className="glass-input" value={numWinners} onChange={(e) => setNumWinners(parseInt(e.target.value))} style={{ width: '60px', textAlign: 'center', padding: '5px', fontSize: '1rem' }} disabled={!isFamilyAdmin} />
                                                     </div>
                                                     {isFamilyAdmin && <button className="btn-secondary" onClick={generateRandomNumbers} style={{ fontSize: '0.8rem', padding: '5px 10px' }}>RE-GENERAR</button>}
@@ -978,6 +974,23 @@ const GameMode = () => {
                                         )}
                                     </div>
                                 )}
+                            </div>
+
+                            <div style={{ marginTop: '20px', display: 'flex', gap: '15px', justifyContent: 'center', paddingBottom: '20px' }}>
+                                <button
+                                    className="btn-secondary"
+                                    onClick={startNextGameCycle}
+                                    style={{ flex: 1, padding: '15px', fontSize: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px', maxWidth: '100px', opacity: 0.8 }}
+                                >
+                                    <FaRedo size={20} /> <span style={{ fontSize: '0.8rem' }}>SALTAR</span>
+                                </button>
+                                <button
+                                    className="btn-primary"
+                                    onClick={startChallenge}
+                                    style={{ flex: 3, padding: '15px 30px', fontSize: '1.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '15px', boxShadow: '0 0 20px rgba(251, 191, 36, 0.4)' }}
+                                >
+                                    <FaPlay /> JUGAR AHORA
+                                </button>
                             </div>
                         </div>
                     )}

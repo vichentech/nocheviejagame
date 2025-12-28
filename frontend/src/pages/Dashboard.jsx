@@ -921,7 +921,7 @@ const Dashboard = () => {
                                             </select>
                                         </div>
 
-                                        {newChallenge.participants > 1 && (
+                                        {(newChallenge.participants > 1 || ['all', 'even', 'odd'].includes(newChallenge.playerConfig.targetType)) && (
                                             <div style={{ flex: '1 1 200px' }} className="animate-fade-in">
                                                 <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.85rem', color: 'var(--text-muted)' }}>Agrupación</label>
                                                 <select className="glass-input" value={newChallenge.playerConfig.grouping} onChange={e => setNewChallenge({ ...newChallenge, playerConfig: { ...newChallenge.playerConfig, grouping: e.target.value } })} style={{ width: '100%' }}>
