@@ -306,6 +306,12 @@ const Dashboard = () => {
     const handleUploadAudio = async (e) => {
         e.preventDefault();
         if (!audioFile) return;
+
+        if (audioFile.size > 10 * 1024 * 1024) {
+            showModal('Error', 'El archivo supera el límite de 10MB');
+            return;
+        }
+
         const formData = new FormData();
         formData.append('file', audioFile);
         formData.append('duration', audioDuration);
@@ -987,7 +993,7 @@ const Dashboard = () => {
                                         {/* AUDIO TAB */}
                                         {mediaTab === 'audio' && (
                                             <div>
-                                                <label style={{ display: 'block', marginBottom: '10px' }}>Audio (Máx 15MB)</label>
+                                                <label style={{ display: 'block', marginBottom: '10px' }}>Audio (Máx 10MB)</label>
                                                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                                                     <input type="file" className="glass-input" onChange={e => handleMediaUpload(e, 'audio')} accept="audio/*" />
                                                     {newChallenge.multimedia?.audio?.url && (
@@ -1169,15 +1175,15 @@ const Dashboard = () => {
                     <div>
                         <form onSubmit={handleUploadAudio} style={{ marginBottom: '20px', display: 'flex', gap: '15px', alignItems: 'flex-end', flexWrap: 'wrap', background: 'rgba(255,255,255,0.05)', padding: '15px', borderRadius: '10px' }}>
                             <div style={{ flex: '1 0 250px' }}>
-                                <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>Seleccionar archivo (MP3, WAV)</label>
-                                <input type="file" className="glass-input" accept="audio/*" onChange={e => setAudioFile(e.target.files[0])} />
+                                <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>Seleccionar archivo (Todos los formatos de audio soportados)</label>
+                                <input type="file" className="glass-input" accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac,.wma,.flac,.webm,.amr,.aif,.aiff,.opus" onChange={e => setAudioFile(e.target.files[0])} />
                             </div>
 
 
 
                             <button type="submit" className="btn-primary" disabled={!audioFile} style={{ flex: '1 0 100px' }}>Subir Himno</button>
                             <div style={{ width: '100%', textAlign: 'center' }}>
-                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Límite: 15MB</span>
+                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Límite: 10MB</span>
                             </div>
                         </form>
                         <div className="grid-auto">

@@ -22,7 +22,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({
     storage: storage,
-    limits: { fileSize: 15 * 1024 * 1024 } // 15MB limit
+    limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
 });
 
 // @route   POST api/audio
