@@ -486,8 +486,9 @@ const Dashboard = () => {
             c.playerConfig.grouping !== 'individual' ? `Agrupación: ${c.playerConfig.grouping === 'pairs' ? 'Por parejas' : 'Por tríos'}.` : '',
             `Duración: ${c.durationType === 'untilNext' ? "Hasta la siguiente prueba." :
                 c.durationType === 'multiChallenge' ? `Durante las próximas ${c.durationLimit || 1} pruebas.` :
-                    c.timeLimit === 0 ? "Indefinido." :
-                        `${c.timeLimit} segundos.`
+                    c.durationType === 'dinnerEnd' ? "Hasta el final de la cena." :
+                        c.timeLimit === 0 ? "Indefinido." :
+                            `${c.timeLimit} segundos.`
             }`,
             c.objects ? `Objetos necesarios: ${c.objects}.` : '',
             c.punishment ? `Castigo: ${c.punishment}.` : ''
@@ -851,6 +852,23 @@ const Dashboard = () => {
                                                 disabled={newChallenge.durationType !== 'multiChallenge'}
                                             />
                                             <span style={{ fontSize: '0.9rem', color: newChallenge.durationType === 'multiChallenge' ? 'white' : 'gray' }}>pruebas</span>
+                                        </div>
+
+                                        {/* OPTION 4: END OF DINNER */}
+                                        <div
+                                            onClick={() => setNewChallenge({ ...newChallenge, durationType: 'dinnerEnd' })}
+                                            style={{
+                                                display: 'flex', alignItems: 'center', gap: '8px', padding: '10px', borderRadius: '8px',
+                                                background: newChallenge.durationType === 'dinnerEnd' ? 'rgba(236, 72, 153, 0.1)' : 'transparent',
+                                                border: `1px solid ${newChallenge.durationType === 'dinnerEnd' ? 'var(--secondary)' : 'rgba(255,255,255,0.1)'}`,
+                                                cursor: 'pointer', flex: 1, minWidth: '200px'
+                                            }}
+                                        >
+                                            <div style={{
+                                                width: '18px', height: '18px', borderRadius: '50%', border: '2px solid white',
+                                                background: newChallenge.durationType === 'dinnerEnd' ? 'white' : 'transparent'
+                                            }} />
+                                            <span style={{ fontSize: '0.9rem', color: newChallenge.durationType === 'dinnerEnd' ? 'white' : 'gray' }}>Hasta el final de la cena</span>
                                         </div>
                                     </div>
                                 </div>
